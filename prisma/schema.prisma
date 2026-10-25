@@ -1,0 +1,46 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Work {
+  id            String   @id // AniList ID
+  malId         Int?
+  type          String // manga | manhwa | manhua | lightnovel | anime
+  format        String?
+  title         String
+  titleEn       String?
+  titleNative   String?
+  synonyms      String? // JSON string[]
+  synopsis      String?
+  synopsisPT    String? // tradução PT-BR gerada por IA (cache)
+  cover         String
+  coverColor    String?
+  banner        String?
+  status        String? // RELEASING | FINISHED | HIATUS | NOT_YET_RELEASED | CANCELLED
+  chapters      Int?
+  volumes       Int?
+  episodes      Int?
+  duration      Int?
+  startDate     String?
+  endDate       String?
+  country       String? // JP | KR | CN | TW
+  isAdult       Boolean  @default(false)
+  genres        String // JSON string[]
+  tags          String // JSON [{ name, rank }]
+  avgScore      Int?
+  popularity    Int?
+  favourites    Int?
+  authors       String? // JSON [{ name, role }]
+  extLinks      String? // JSON [{ site, url, language, type, color, icon }]
+  source        String?
+  siteUrl       String?
+  lastUpdate    Int? // unix seconds — última atualização na AniList
+  nextEpisodeAt String? // anime: data real do próximo episódio (ISO)
+  nextEpisodeNum Int?
+  createdAt     DateTime @default(now())
+}

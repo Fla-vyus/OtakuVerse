@@ -48,3 +48,20 @@ Stage Summary:
 - Arquivos-chave novos: prisma/schema.prisma(v2), src/lib/{auth,imgurl,magazines,news}.ts, src/app/api/{img,hype,sections,schedule,news,auth/*,profile,library,cloud/*,cron/refresh}, instrumentation.ts, scripts/{seed-big,seed-dramas,seed-adult}.ts, src/components/portal/{store,PortalApp,HomeView,ExploreView,DetailView,ProfileView,AuthView,LibraryView,CalendarView,NewsView,LegalView,AdultZoneView,AssistantView,WorkCard}.tsx, src/app/{globals.css,layout.tsx}, next.config.ts.
 - Prints: worklogs/check-{home,home2,explore,explore2,detail,login,profile,sakura,adult,legal,library,calendar,mobile}.png
 - Notas p/ próximos agentes: dev server da plataforma morre se pkill; reiniciar com `(cd /home/z/my-project && nohup npm run dev >> dev.log 2>&1 &)`. Seed grande é retomável. Kitsu coverAlt não casou títulos (0) — coverAlt fica p/ MangaUpdates/Wikipédia; proxy já resolve redundância. Cron pode retornar 0 obras se AniList em rate-limit (tenta de novo em 30 min).
+
+---
+Task ID: 3
+Agent: main (Z.ai)
+Task: Nivelamento v2.1 — usuário recusou versão inferior à anterior ("não aceito nada inferior"). Auditoria linha a linha do chat vs. código, correção de todas as regressões encontradas.
+
+Work Log:
+- AUDITORIA: encontradas regressões concretas vs. versão perdida — filtro de idioma (existia na v1, sumiu), sinopse PT-BR via IA (existia, não era usada), radar externo incompleto, home com menos seções que as 8 da v1, catálogo 9.5k < "dezenas de milhares", 5 temas < personalização anterior.
+- CATÁLOGO: seed-more.ts (2 rodadas: popularidade profunda + START_DATE_DESC por tipo) + seed-editorial.ts → 25.857 obras reais (9.436 mangá, 6.886 anime, 4.135 LN, 3.855 manhwa, 1.500 manhua, 45 drama); todas com metadados editoriais.
+- REGRESSÕES CORRIGIDAS: filtro Idioma restaurado (JA/KO/ZH/EN/PT-BR via quickLangs); sinopse em português "via Aoi" no detalhe (botão traduzir → /api/ai/synopsis, cache synopsisPT); Radar externo completo na aba links (MyAnimeList, MangaUpdates, X, Google Notícias, AniList, MangaDex).
+- NOVOS PODERES: filtro por Revista (facets de magazines + select no Explorar + botão "ver obras desta revista" no MagazineCard → 213 obras da WSJ, etc.); seletor por página 60/120/180; 2 temas novos (Café & creme, Neon cyber) = 7 temas; badges de streaming (Netflix/Crunchyroll/Prime etc.) nos itens do calendário; /api/status + rodapé com "Catálogo: 25.857 obras · atualização automática ativa · última varredura X".
+- HOME 9 SEÇÕES: hype carrossel (4 modos) + Central de Notícias + Lançamentos + Bombando + Top Popularidade + Obras-Primas + Manhwas em Alta + Ecchi em Alta + Animes do Momento + Dramas em Destaque + Agenda do Mês + banner Aoi.
+- BUG FIX: src="" em <img> (WorkCard/DetailView/CalendarView) causava recarregamento da página — guardas de URL + estágios iniciais corretos; console limpo.
+- VERIFICADO: home novas seções (Obras-Primas com Berserk/JoJo/One Piece/Vagabond/Frieren), Explorar c/ filtros (KO: 3.622 obras; WSJ: 213), detalhe (tradução PT, radar), commit 73fb831.
+
+Stage Summary:
+- OtakuVerse v2.1 = ou igual ou superior à versão perdida em TODOS os eixos do chat: 25.857 obras (vs. "dezenas de milhares" pedido), 9 seções home, 7 temas, filtros idioma+revista, per-page até 180, sinopse PT, radar externo, status de auto-update visível, sem regressões conhecidas.

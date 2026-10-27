@@ -108,12 +108,12 @@ export function toWorkRow(m: any) {
   };
 }
 
-export async function anilistFetch(query: string, variables: Record<string, unknown>): Promise<any> {
+export async function anilistFetch(query: string, variables: Record<string, unknown>, opts?: { timeoutMs?: number }): Promise<any> {
   const res = await fetch(API, {
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "application/json" },
     body: JSON.stringify({ query, variables }),
-    signal: AbortSignal.timeout(20000),
+    signal: AbortSignal.timeout(opts?.timeoutMs ?? 20000),
     cache: "no-store",
   });
   const json: any = await res.json();

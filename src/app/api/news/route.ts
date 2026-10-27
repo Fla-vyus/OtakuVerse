@@ -1,15 +1,20 @@
+// Feed de notícias — isolamento total: nunca 500, nunca trava.
+// Fontes: AniList → Kitsu (redundância) → catálogo local (sempre disponível).
 import { NextResponse } from "next/server";
-import { getAllWorks } from "@/lib/works";
+import { getAllWorks, peekStaleCache } from "@/lib/works";
 import { buildNews } from "@/lib/news";
+import type { WorkData } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
+  let pool: WorkData[] = [];
   try {
-    const all = await getAllWorks();
-    const items = await buildNews(all).catch(() => []);
-    return NextResponse.json({ ok: true, items });
-  } catch (e: any) {
-    return NextResponse.json({ ok: false, error: e.message }, { status: 500 });
+    pool = await getAllWorks();
+  } catch {
+    // banco ocupado/falhou → usa o último pool válido em memória (stale cache)
+    pool = peekStaleCache()?.works ?? [];
   }
+  const items = await buildNews(pool).catch(() => []);
+  return NextResponse.json({ ok: true, items });
 }

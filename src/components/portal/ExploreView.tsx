@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Search, SlidersHorizontal, ChevronLeft, ChevronRight, Compass, Lock, Flame } from "lucide-react";
 import { usePortal, DEFAULT_FILTERS } from "./store";
 import { CardGrid } from "./WorkCard";
+import { fetchJSON } from "@/lib/fetchClient";
 import { Input } from "@/components/ui/input";
 import type { WorkData } from "@/lib/types";
 
@@ -75,16 +76,14 @@ export function ExploreView() {
       if (filters.lang !== "all") params.set("lang", filters.lang);
       if (filters.mag !== "all") params.set("mag", filters.mag);
       if (filters.q.trim()) params.set("q", filters.q.trim());
-      fetch(`/api/works?${params.toString()}`)
-        .then((r) => r.json())
+      fetchJSON(`/api/works?${params.toString()}`)
         .then((d) => {
-          if (d.ok) {
+          if (d?.ok) {
             setItems(d.items);
             setTotal(d.total);
             if (d.facets) setFacets(d.facets);
           }
         })
-        .catch(() => {})
         .finally(() => setLoading(false));
     },
     [filters, perPage]
@@ -119,10 +118,9 @@ export function ExploreView() {
     const term = filters.q.trim();
     if (term.length < 3) return;
     debounce.current = setTimeout(() => {
-      fetch(`/api/discover?q=${encodeURIComponent(term)}`)
-        .then((r) => r.json())
+      fetchJSON(`/api/discover?q=${encodeURIComponent(term)}`, { tries: 1, timeoutMs: 12000 })
         .then((d) => {
-          if (d.ok && Array.isArray(d.items) && d.items.length) setLiveResults(d.items.slice(0, 12));
+          if (d?.ok && Array.isArray(d.items) && d.items.length) setLiveResults(d.items.slice(0, 12));
         })
         .catch(() => {});
     }, 400);

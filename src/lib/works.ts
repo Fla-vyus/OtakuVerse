@@ -9,7 +9,11 @@ interface Cache {
   maxUpdatedAt: number;
 }
 
-const g = globalThis as unknown as { __ovCache?: Cache };
+const g = globalThis as unknown as {
+  __ovCache?: Cache;
+  __ovCacheBuilding?: Promise<Cache>; // single-flight: N requisições concorrentes = 1 rebuild
+  __ovCacheStale?: Cache; // último cache válido — emergência quando o banco falha
+};
 const TTL = 300_000; // 5 min — pool de 24k obras é caro de remontar; invalidado por seeds/cron
 
 async function buildCache(): Promise<Cache> {
@@ -20,23 +24,73 @@ async function buildCache(): Promise<Cache> {
   return { works, builtAt: Date.now(), maxUpdatedAt };
 }
 
+/** Rebuild com single-flight: se já há um build em andamento, todo mundo espera o MESMO promise
+ *  (antes: N requisições concorrentes geravam N leituras de 24k rows — stampede que travava o SQLite). */
+function rebuildCache(): Promise<Cache> {
+  if (g.__ovCacheBuilding) return g.__ovCacheBuilding;
+  const p = buildCache()
+    .then((cache) => {
+      g.__ovCache = cache;
+      return cache;
+    })
+    .finally(() => {
+      g.__ovCacheBuilding = undefined;
+    });
+  g.__ovCacheBuilding = p;
+  return p;
+}
+
 /** Pool completo de obras — exclui SEMPRE conteúdo adulto e dramas do pool público.
  *  Conteúdo adulto só entra no pool quando `adult=true` (usuário com modo +18 ativo e rota da zona adulta).
  *  Dramas saíram do catálogo a pedido do usuário: seguem no banco como dados inativos
- *  (links antigos respondem "não encontrada" no pool público). */
+ *  (links antigos respondem "não encontrada" no pool público).
+ *
+ *  Estratégia anti-"site vazio":
+ *  - Cache frio → rebuild (com single-flight).
+ *  - Cache expirado → devolve o stale NA HORA e revalida em background (o usuário nunca espera o rebuild).
+ *  - Erro no rebuild (SQLite ocupado pelo cron/backup) → se há stale, devolve stale; senão propaga para a rota tratar. */
 export async function getAllWorks(adult = false): Promise<WorkData[]> {
   let cache = g.__ovCache;
-  if (!cache || Date.now() - cache.builtAt > TTL) {
-    cache = await buildCache();
-    g.__ovCache = cache;
+  if (!cache) {
+    cache = await rebuildCache();
+  } else if (Date.now() - cache.builtAt > TTL) {
+    // stale-while-revalidate: responde já com o stale; revalida em background
+    rebuildCache().catch(() => {});
   }
   if (adult) return cache.works;
   return cache.works.filter((w) => w.classification !== "adult" && w.type !== "drama");
 }
 
-/** Invalida o cache após seeds/cron */
+/** Invalida o cache após seeds/cron. Com stale-while-revalidate, a próxima leitura
+ *  responde stale imediatamente e revalida em background — sem janela vazia. */
 export function invalidateWorksCache() {
+  const stale = g.__ovCache;
   g.__ovCache = undefined;
+  g.__ovCacheStale = stale;
+}
+
+/** Pool de emergência: último cache válido conhecido (usado por rotas quando o banco falha). */
+export function peekStaleCache(): Cache | undefined {
+  return g.__ovCache ?? g.__ovCacheStale;
+}
+
+/** Projeção de card: remove os campos pesados que os cards nunca usam.
+ *  synopsis ~70% do peso de um card; authors/extLinks/synonyms/banner fecham o resto;
+ *  tags passa por trim (cards usam as 2 primeiras — mantemos 6 por segurança).
+ *  O detalhe da obra continua carregando o objeto COMPLETO via /api/works/[id]. */
+export function toCardWork(w: WorkData): WorkData {
+  return {
+    ...w,
+    synopsis: null,
+    synopsisPT: null,
+    synonyms: [],
+    authors: [],
+    extLinks: [],
+    banner: null,
+    siteUrl: null,
+    ptTags: undefined,
+    tags: [...w.tags].sort((a, b) => b.rank - a.rank).slice(0, 6),
+  };
 }
 
 export async function getWorkById(id: string, adult = false): Promise<WorkData | null> {

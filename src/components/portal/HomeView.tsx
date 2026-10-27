@@ -3,12 +3,13 @@
 import { useEffect, useState } from "react";
 import { ChevronLeft, ChevronRight, Flame, Star, Sparkles, Trophy, Rocket, CalendarDays, Newspaper, Gauge, Layers, BookOpen, Clock, TrendingUp, BookMarked, Check } from "lucide-react";
 import { usePortal, HYPE_MODES } from "./store";
-import { CardRow, WorkCard } from "./WorkCard";
+import { CardRow, WorkCard, CardSkeleton } from "./WorkCard";
+import { fetchJSON } from "@/lib/fetchClient";
 import type { WorkData } from "@/lib/types";
 
 interface NewsItem {
-  id: string; kind: string; title: string; summary: string;
-  image: string | null; date: string; workId: string; badge: string;
+  id: string; kind: string; title: string; summary: string; body?: string;
+  image: string | null; date: string; workId: string | null; badge: string; source?: string;
 }
 
 interface ChapterRelease {
@@ -74,15 +75,12 @@ function HypeCarousel() {
 
   useEffect(() => {
     let alive = true;
-    fetch(`/api/hype?mode=${hypeMode}`)
-      .then((r) => r.json())
-      .then((d) => {
-        if (alive && d.ok) {
-          setItems(d.items);
-          setFetchedMode(hypeMode);
-        }
-      })
-      .catch(() => {});
+    fetchJSON(`/api/hype?mode=${hypeMode}`).then((d) => {
+      if (alive && d?.ok && Array.isArray(d.items) && d.items.length) {
+        setItems(d.items);
+        setFetchedMode(hypeMode);
+      }
+    });
     return () => { alive = false; };
   }, [hypeMode]);
 
@@ -214,7 +212,7 @@ function NewsTeaser({ news }: { news: NewsItem[] }) {
         {news.slice(0, 8).map((n) => (
           <button
             key={n.id}
-            onClick={() => openWork(n.workId)}
+            onClick={() => n.workId && openWork(n.workId)}
             className="group w-64 shrink-0 overflow-hidden rounded-2xl border border-border bg-card text-left transition hover:-translate-y-0.5 hover:shadow-lg"
           >
             <div className="relative aspect-video w-full overflow-hidden" style={{ background: "var(--muted)" }}>
@@ -232,6 +230,7 @@ function NewsTeaser({ news }: { news: NewsItem[] }) {
             <div className="p-3">
               <p className="line-clamp-1 text-sm font-bold">{n.title}</p>
               <p className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-muted-foreground">{n.summary}</p>
+              {n.source && <p className="mt-1.5 text-[9px] font-bold uppercase tracking-wider text-muted-foreground/70">fonte: {n.source}</p>}
             </div>
           </button>
         ))}
@@ -332,6 +331,9 @@ function MagazineRow({ magazines }: { magazines: MagEntry[] }) {
   );
 }
 
+const SECTIONS_CACHE_KEY = "ov-sections-v2";
+const SECTIONS_CACHE_TTL = 30 * 60_000;
+
 export function HomeView() {
   const [data, setData] = useState<{
     launches: WorkData[]; newMangas: WorkData[]; hits: WorkData[]; bestsellers: WorkData[]; masterpieces: WorkData[];
@@ -342,22 +344,61 @@ export function HomeView() {
   const [sales, setSales] = useState<{ volumes: SaleItem[]; series: SaleItem[] } | null>(null);
   const [mags, setMags] = useState<{ magazines: MagEntry[] } | null>(null);
   const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   const openExplore = usePortal((s) => s.openExplore);
   const go = usePortal((s) => s.go);
   const openWork = usePortal((s) => s.openWork);
   const user = usePortal((s) => s.user);
 
   useEffect(() => {
-    fetch("/api/sections")
-      .then((r) => r.json())
-      .then((d) => {
-        if (d.ok) setData(d);
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
-    fetch("/api/sales").then((r) => r.json()).then((d) => (d.ok ? setSales(d) : null)).catch(() => {});
-    fetch("/api/magazines").then((r) => r.json()).then((d) => (d.ok ? setMags(d) : null)).catch(() => {});
-  }, []);
+    let alive = true;
+    let hydrated = false;
+
+    const hydrateTimer = setTimeout(() => {
+      // hidratação instantânea do último feed conhecido (reabrir o site = home imediata, sem loading)
+      try {
+        const raw = sessionStorage.getItem(SECTIONS_CACHE_KEY);
+        if (raw) {
+          const cached = JSON.parse(raw);
+          if (cached?.at && Date.now() - cached.at < SECTIONS_CACHE_TTL && cached?.data?.ok) {
+            setData(cached.data);
+            setLoading(false);
+            hydrated = true;
+          }
+        }
+      } catch {}
+    }, 0);
+
+    async function loadSections() {
+      const d = await fetchJSON("/api/sections");
+      if (!alive) return;
+      if (d?.ok) {
+        setData(d);
+        setFailed(false);
+        try { sessionStorage.setItem(SECTIONS_CACHE_KEY, JSON.stringify({ at: Date.now(), data: d })); } catch {}
+      } else if (!hydrated) {
+        // só marca falha se NEM cache havia — home nunca fica oca em silêncio
+        setFailed(true);
+      }
+      setLoading(false);
+    }
+    loadSections();
+
+    fetchJSON("/api/sales").then((d) => { if (alive && d?.ok) setSales(d); });
+    fetchJSON("/api/magazines").then((d) => { if (alive && d?.ok) setMags(d); });
+
+    return () => {
+      alive = false;
+      clearTimeout(hydrateTimer);
+    };
+  }, [attempt]);
+
+  function retry() {
+    setFailed(false);
+    setLoading(true);
+    setAttempt((a) => a + 1);
+  }
 
   const catChips = [
     { label: "Mangás", type: "manga", emoji: "📖" },
@@ -391,9 +432,26 @@ export function HomeView() {
         ))}
       </div>
 
-      {loading && (
-        <div className="flex items-center gap-3 rounded-2xl border border-border bg-card p-5 text-sm text-muted-foreground">
-          <Sparkles className="h-5 w-5 animate-pulse text-primary" /> Carregando o catálogo real...
+      {loading && !data && (
+        <div aria-hidden>
+          <div className="skel mb-6 h-24 rounded-2xl" />
+          <div className="no-scrollbar flex gap-3 overflow-hidden pb-2">
+            {Array.from({ length: 8 }, (_, i) => (
+              <div key={i} className="w-[150px] shrink-0 sm:w-[168px]"><CardSkeleton /></div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {failed && (
+        <div className="flex flex-col items-start gap-3 rounded-2xl border border-amber-500/40 bg-amber-500/10 p-5 sm:flex-row sm:items-center">
+          <div className="flex-1">
+            <p className="text-sm font-bold">Não conseguimos carregar o catálogo agora</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">A rede ou o servidor pisou — suas configurações estão intactas. Tente de novo em instantes.</p>
+          </div>
+          <button onClick={retry} className="bg-brand-gradient rounded-xl px-4 py-2 text-sm font-bold text-white shadow-md transition hover:brightness-110">
+            Tentar novamente
+          </button>
         </div>
       )}
 

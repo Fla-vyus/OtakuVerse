@@ -3,8 +3,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { anilistFetch, toWorkRow, SEARCH_FIELDS } from "@/lib/anilist";
 import { db } from "@/lib/db";
+import { classify } from "@/lib/works";
 import { parseWork } from "@/lib/types";
-import { invalidateWorksCache } from "@/lib/works";
+import { getAllWorks, invalidateWorksCache } from "@/lib/works";
 
 export const dynamic = "force-dynamic";
 
@@ -40,43 +41,52 @@ export async function GET(req: NextRequest) {
 
   // 1) tenta ao vivo na AniList (hype REAL do momento)
   try {
-    const data = await anilistFetch(MODES[mode].query, MODES[mode].vars);
+    const data = await anilistFetch(MODES[mode].query, MODES[mode].vars, { timeoutMs: 8000 });
     const media: any[] = data?.Page?.media ?? [];
     const items = media.map((m) => parseWork(toWorkRow(m)));
-    // persiste em background (mantém o catálogo fresco)
-    Promise.all(
-      media.map((m) =>
-        db.work.upsert({
-          where: { id: String(m.id) },
-          create: { ...toWorkRow(m), ...classRow(m) },
-          update: toWorkRow(m),
-        })
-      )
-    )
-      .then(() => invalidateWorksCache())
-      .catch(() => {});
+    // persiste em background (mantém o catálogo fresco).
+    // SÓ invalida o pool quando obra NOVA entra — antes, cada hit nukava o cache de 24k rows
+    // e a próxima request recompilava tudo do zero (fonte de lentidão e de "site vazio").
+    (async () => {
+      try {
+        const before = await db.work.count();
+        for (const m of media) {
+          await db.work.upsert({
+            where: { id: String(m.id) },
+            create: { ...toWorkRow(m), ...classRow(m) },
+            update: toWorkRow(m),
+          });
+        }
+        const after = await db.work.count();
+        if (after > before) invalidateWorksCache();
+      } catch {}
+    })();
 
     g.__hypeCache = { ...(g.__hypeCache ?? { at: 0, data: {} }), at: Date.now(), data: { ...(g.__hypeCache?.data ?? {}), [mode]: items } };
     return NextResponse.json({ ok: true, mode, items, source: "anilist-live" });
   } catch {
-    // 2) fallback: ordena o banco local
-    const { getAllWorks } = await import("@/lib/works");
-    const all = await getAllWorks();
-    const sorters: Record<string, (a: any, b: any) => number> = {
-      hype: (a, b) => (b.popularity ?? 0) - (a.popularity ?? 0),
-      score: (a, b) => (b.avgScore ?? 0) - (a.avgScore ?? 0),
-      new: (a, b) => (b.startDate ?? "").localeCompare(a.startDate ?? ""),
-      classic: (a, b) => (b.favourites ?? 0) - (a.favourites ?? 0),
-    };
-    const items = all
-      .filter((w) => w.banner || (w.popularity ?? 0) > 50000)
-      .sort(sorters[mode])
-      .slice(0, 14);
-    return NextResponse.json({ ok: true, mode, items, source: "db" });
+    // 2) fallback: ordena o banco local (getAllWorks tem stale-while-revalidate — nunca trava)
+    try {
+      const all = await getAllWorks();
+      const sorters: Record<string, (a: any, b: any) => number> = {
+        hype: (a, b) => (b.popularity ?? 0) - (a.popularity ?? 0),
+        score: (a, b) => (b.avgScore ?? 0) - (a.avgScore ?? 0),
+        new: (a, b) => (b.startDate ?? "").localeCompare(a.startDate ?? ""),
+        classic: (a, b) => (b.favourites ?? 0) - (a.favourites ?? 0),
+      };
+      const items = all
+        .filter((w) => w.banner || (w.popularity ?? 0) > 50000)
+        .sort(sorters[mode])
+        .slice(0, 14);
+      return NextResponse.json({ ok: true, mode, items, source: "db" });
+    } catch {
+      return NextResponse.json({ ok: false, error: "Fontes temporariamente indisponíveis", items: [] }, { status: 200 });
+    }
   }
 }
 
 function classRow(m: any) {
-  // reuso leve — classificação completa acontece no seed; aqui só adult flag
-  return { isAdult: !!m.isAdult, classification: m.isAdult ? "adult" : "safe" };
+  // classificação consistente com o resto do sistema (ecchi/suggestive detectado pelas tags)
+  const cls = classify(m);
+  return { isAdult: !!m.isAdult, classification: cls.classification, adultTags: cls.adultTags, spicy: cls.spicy };
 }

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAllWorks, filterWorks, getFacets } from "@/lib/works";
+import { getAllWorks, filterWorks, getFacets, toCardWork } from "@/lib/works";
 import { getSessionUser } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
@@ -32,7 +32,7 @@ export async function GET(req: NextRequest) {
     });
     return NextResponse.json({
       ok: true,
-      items,
+      items: items.map(toCardWork),
       total,
       facets,
       page: Number(sp.get("page") ?? 1),

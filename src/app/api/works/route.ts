@@ -24,6 +24,7 @@ export async function GET(req: NextRequest) {
       status: sp.get("status") ?? undefined,
       lang: sp.get("lang") ?? undefined,
       classification: adult ? undefined : sp.get("classification") ?? undefined,
+      mag: sp.get("mag") ?? undefined,
       q: sp.get("q") ?? undefined,
       sort: sp.get("sort") ?? undefined,
       page: Number(sp.get("page") ?? 1),

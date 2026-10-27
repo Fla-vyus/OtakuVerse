@@ -188,6 +188,7 @@ export function PortalApp() {
   const setHypeMode = usePortal((s) => s.setHypeMode);
   const setLibrary = usePortal((s) => s.setLibrary);
   const [search, setSearch] = useState("");
+  const [status, setStatus] = useState<{ total: number | null; lastRefreshAt: string | null } | null>(null);
 
   useEffect(() => {
     // tema + hypeMode salvos
@@ -217,6 +218,9 @@ export function PortalApp() {
     })();
     if (parsed.view !== "home") usePortal.setState(parsed);
     refreshAuth();
+    fetch("/api/status").then((r) => r.json()).then((d) => {
+      if (d.ok) setStatus({ total: d.total, lastRefreshAt: d.lastRefreshAt });
+    }).catch(() => {});
     return unbind;
   }, []);
 
@@ -331,6 +335,12 @@ export function PortalApp() {
                 <a href="https://pt.wikipedia.org" target="_blank" rel="noopener noreferrer" className="underline-offset-2 hover:text-foreground hover:underline">Wikipédia</a>
               </div>
               <p className="mt-2 leading-relaxed">© {new Date().getFullYear()} OtakuVerse · Direitos das obras pertencem aos autores e editoras. Site informativo — não hospedamos conteúdo.</p>
+              {status && (
+                <p className="mt-1.5 flex items-center gap-1.5 font-semibold">
+                  <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" />
+                  Catálogo: {status.total != null ? status.total.toLocaleString("pt-BR") : "..."} obras · atualização automática ativa{status.lastRefreshAt ? ` · última varredura ${new Date(status.lastRefreshAt).toLocaleString("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}` : ""}
+                </p>
+              )}
             </div>
           </div>
         </div>

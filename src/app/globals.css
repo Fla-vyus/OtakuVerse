@@ -193,6 +193,60 @@
   color-scheme: dark;
 }
 
+/* ══════════ CAFÉ & CREME (quente, acolhedor) ══════════ */
+[data-ov-theme="cafe"] {
+  --background: #faf6f0;
+  --foreground: #2a1d12;
+  --card: #ffffff;
+  --card-foreground: #2a1d12;
+  --popover: #ffffff;
+  --popover-foreground: #2a1d12;
+  --primary: #b45309;
+  --primary-foreground: #ffffff;
+  --secondary: #f3e9db;
+  --secondary-foreground: #443019;
+  --muted: #f5ede2;
+  --muted-foreground: #7d6a54;
+  --accent: #ecdfcc;
+  --accent-foreground: #713f12;
+  --destructive: #dc2626;
+  --border: rgba(120, 80, 30, 0.14);
+  --input: rgba(120, 80, 30, 0.18);
+  --ring: #b45309;
+  --ov-glass: rgba(253, 249, 244, 0.85);
+  --ov-hero: linear-gradient(135deg, #78350f 0%, #b45309 50%, #d97706 100%);
+  --ov-brand-grad: linear-gradient(120deg, #b45309, #d97706);
+  --ov-shadow: 0 10px 30px -12px rgba(120, 70, 20, 0.25);
+  color-scheme: light;
+}
+
+/* ══════════ NEON CYBER (escuro futurista) ══════════ */
+[data-ov-theme="neon"] {
+  --background: #060913;
+  --foreground: #e4f4ff;
+  --card: #0b1220;
+  --card-foreground: #e4f4ff;
+  --popover: #0d1424;
+  --popover-foreground: #e4f4ff;
+  --primary: #06b6d4;
+  --primary-foreground: #04121a;
+  --secondary: #111c2f;
+  --secondary-foreground: #cfe9f7;
+  --muted: #0f1a2b;
+  --muted-foreground: #7e9db4;
+  --accent: #122a3d;
+  --accent-foreground: #d6f2ff;
+  --destructive: #f43f5e;
+  --border: rgba(103, 232, 249, 0.14);
+  --input: rgba(103, 232, 249, 0.18);
+  --ring: #06b6d4;
+  --ov-glass: rgba(8, 13, 26, 0.86);
+  --ov-hero: linear-gradient(135deg, #164e63 0%, #0e7490 45%, #a21caf 100%);
+  --ov-brand-grad: linear-gradient(120deg, #06b6d4, #d946ef);
+  --ov-shadow: 0 10px 30px -12px rgba(0, 0, 0, 0.6);
+  color-scheme: dark;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

@@ -118,6 +118,7 @@ export interface WorkFilters {
   status?: string;
   lang?: string;
   classification?: string; // all | safe | suggestive (adult tratado à parte)
+  mag?: string; // nome da revista/publicação
   q?: string;
   sort?: string;
   page?: number;
@@ -131,6 +132,7 @@ export function filterWorks(all: WorkData[], f: WorkFilters): { items: WorkData[
   if (f.tag && f.tag !== "all") list = list.filter((w) => w.tags.some((t) => t.name === f.tag));
   if (f.status && f.status !== "all") list = list.filter((w) => w.status === f.status);
   if (f.classification && f.classification !== "all") list = list.filter((w) => w.classification === f.classification);
+  if (f.mag && f.mag !== "all") list = list.filter((w) => w.magazine?.name === f.mag);
   if (f.q) {
     const q = f.q.toLowerCase().trim();
     list = list.filter(
@@ -177,7 +179,7 @@ export function quickLangs(w: WorkData): string[] {
 }
 
 // ---------- Facets (cacheado junto com o pool) ----------
-const gFacets = globalThis as unknown as { __ovFacets?: { genres: { name: string; count: number }[]; tags: { name: string; count: number }[]; at: number } };
+const gFacets = globalThis as unknown as { __ovFacets?: { genres: { name: string; count: number }[]; tags: { name: string; count: number }[]; magazines: { name: string; count: number }[]; at: number } };
 
 export async function getFacets(adult = false) {
   const gF = gFacets.__ovFacets;
@@ -185,15 +187,18 @@ export async function getFacets(adult = false) {
   const all = await getAllWorks(adult);
   const genreCount = new Map<string, number>();
   const tagCount = new Map<string, number>();
+  const magCount = new Map<string, number>();
   for (const w of all) {
     for (const g of w.genres) genreCount.set(g, (genreCount.get(g) ?? 0) + 1);
     for (const t of w.tags) {
       if (t.rank >= 60) tagCount.set(t.name, (tagCount.get(t.name) ?? 0) + 1);
     }
+    if (w.magazine?.name) magCount.set(w.magazine.name, (magCount.get(w.magazine.name) ?? 0) + 1);
   }
   const genres = [...genreCount.entries()].sort((a, b) => b[1] - a[1]).map(([name, count]) => ({ name, count }));
   const tags = [...tagCount.entries()].sort((a, b) => b[1] - a[1]).slice(0, 80).map(([name, count]) => ({ name, count }));
-  const result = { genres, tags, at: Date.now() };
+  const magazines = [...magCount.entries()].sort((a, b) => b[1] - a[1]).slice(0, 50).map(([name, count]) => ({ name, count }));
+  const result = { genres, tags, magazines, at: Date.now() };
   gFacets.__ovFacets = result;
   return result;
 }

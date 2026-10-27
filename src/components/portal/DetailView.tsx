@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import {
   ArrowLeft, Star, Users, Heart, Layers, BookOpen, CalendarDays, Clock,
   Sparkles, Loader2, Languages, ExternalLink, User, Globe, Library as LibIcon,
-  BookmarkCheck, BookPlus, Building2, Newspaper, Tags, ListTree, ShieldAlert, Tv,
+  BookmarkCheck, BookPlus, Building2, Newspaper, Tags, ListTree, ShieldAlert, Tv, Languages as LangIcon,
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -80,7 +80,59 @@ function TagChips({ work }: { work: WorkData }) {
   );
 }
 
+function SynopsisBlock({ work }: { work: WorkData }) {
+  const [pt, setPt] = useState<string | null>(work.synopsisPT ?? null);
+  const [loading, setLoading] = useState(false);
+  const [failed, setFailed] = useState(false);
+
+  const translate = async () => {
+    setLoading(true);
+    setFailed(false);
+    try {
+      const r = await fetch("/api/ai/synopsis", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: work.id }),
+      });
+      const d = await r.json();
+      if (d.ok && d.synopsisPT) setPt(d.synopsisPT);
+      else setFailed(true);
+    } catch {
+      setFailed(true);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="rounded-2xl border border-border bg-card p-4">
+      <p className="mb-2 text-sm font-black">Sinopse</p>
+      {pt && (
+        <div className="mb-3 rounded-xl border border-primary/25 bg-primary/5 p-3">
+          <p className="mb-1 flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-primary">
+            <LangIcon className="h-3 w-3" /> em português (via Aoi)
+          </p>
+          <p className="text-sm leading-relaxed text-foreground/90">{pt}</p>
+        </div>
+      )}
+      <p className="whitespace-pre-line text-sm leading-relaxed text-muted-foreground">{work.synopsis ?? "Sinopse não disponível na fonte."}</p>
+      {!pt && work.synopsis && (
+        <button
+          onClick={translate}
+          disabled={loading}
+          className="mt-3 flex items-center gap-1.5 rounded-xl border border-primary/40 bg-primary/10 px-3.5 py-2 text-xs font-bold text-primary transition hover:bg-primary/20 disabled:opacity-50"
+        >
+          {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+          {loading ? "A Aoi está traduzindo..." : "Traduzir sinopse para português"}
+        </button>
+      )}
+      {failed && <p className="mt-2 text-[11px] text-destructive">A tradução falhou agora — tente de novo em instantes.</p>}
+    </div>
+  );
+}
+
 function MagazineCard({ mag, network }: { mag: MagazineInfo; network?: string | null }) {
+  const openExplore = usePortal((s) => s.openExplore);
   const demoLabel: Record<string, string> = {
     shonen: "Shōnen (adolescente masculino)",
     seinen: "Seinen (adulto masculino)",
@@ -117,6 +169,12 @@ function MagazineCard({ mag, network }: { mag: MagazineInfo; network?: string | 
           <span className="font-bold text-foreground">Também publicou:</span> {mag.famous.slice(0, 6).join(", ")}.
         </p>
       )}
+      <button
+        onClick={() => openExplore({ mag: mag.name, q: "" })}
+        className="mt-3 flex items-center gap-1.5 rounded-xl border border-primary/40 bg-primary/10 px-3.5 py-2 text-xs font-bold text-primary transition hover:bg-primary/20"
+      >
+        <BookOpen className="h-3.5 w-3.5" /> Ver obras desta revista no catálogo
+      </button>
     </div>
   );
 }
@@ -227,9 +285,13 @@ export function DetailView({ workId }: { workId: string }) {
       {/* HERO */}
       <section className="relative overflow-hidden rounded-3xl border border-border">
         <div className="absolute inset-0">
-          {(w.banner || w.cover) && imgStage < 2 ? (
+          {imgStage < 2 && (w.banner || w.cover || w.coverAlt) ? (
             <img
-              src={imgStage === 0 ? `/api/img?u=${encodeURIComponent(w.banner ?? w.cover)}` : (w.coverAlt ?? w.cover)}
+              src={
+                imgStage === 0 && (w.banner || w.cover)
+                  ? `/api/img?u=${encodeURIComponent(w.banner ?? w.cover)}`
+                  : (w.coverAlt || w.cover || w.banner || "")
+              }
               alt=""
               referrerPolicy="no-referrer"
               onError={() => setImgStage((s) => s + 1)}
@@ -245,12 +307,20 @@ export function DetailView({ workId }: { workId: string }) {
           {/* capa */}
           <div className="w-36 shrink-0 self-start sm:w-48">
             <div className="ov-shadow overflow-hidden rounded-2xl border border-border" style={{ background: w.coverColor ? `${w.coverColor}22` : "var(--muted)" }}>
-              {imgStage < 2 && (proxy || w.coverAlt || w.cover) ? (
+              {imgStage === 0 && (w.cover || w.coverAlt) ? (
                 <img
-                  src={imgStage === 0 ? (proxy ?? "") : (w.coverAlt ?? w.cover)}
+                  src={proxy ?? ""}
                   alt={`Capa de ${w.title}`}
                   referrerPolicy="no-referrer"
                   onError={() => setImgStage((s) => s + 1)}
+                  className="aspect-[2/3] w-full object-cover"
+                />
+              ) : imgStage === 1 && (w.coverAlt || w.cover) ? (
+                <img
+                  src={w.coverAlt || w.cover}
+                  alt={`Capa de ${w.title}`}
+                  referrerPolicy="no-referrer"
+                  onError={() => setImgStage(2)}
                   className="aspect-[2/3] w-full object-cover"
                 />
               ) : (
@@ -342,11 +412,8 @@ export function DetailView({ workId }: { workId: string }) {
             {/* revista/editora */}
             {mag && <MagazineCard mag={mag} network={w.network} />}
 
-            {/* sinopse */}
-            <div className="rounded-2xl border border-border bg-card p-4">
-              <p className="mb-2 text-sm font-black">Sinopse</p>
-              <p className="whitespace-pre-line text-sm leading-relaxed text-muted-foreground">{w.synopsis ?? "Sinopse não disponível na fonte."}</p>
-            </div>
+            {/* sinopse (com tradução PT sob demanda) */}
+            <SynopsisBlock work={w} />
 
             {/* gêneros + tags */}
             <div className="rounded-2xl border border-border bg-card p-4">
@@ -403,7 +470,7 @@ export function DetailView({ workId }: { workId: string }) {
 
         {/* ABA LINKS */}
         <TabsContent value="links" className="mt-4 flex flex-col gap-3">
-          <p className="text-xs text-muted-foreground">Portais oficiais para ler/assistir legalmente e comunidades onde a obra é discutida.</p>
+          <p className="text-xs text-muted-foreground">Portais oficiais para ler/assistir legalmente, comunidades onde a obra é discutida e radar externo para acompanhar notícias.</p>
           {w.extLinks.length > 0 ? (
             <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
               {w.extLinks.map((l, i) => (
@@ -427,10 +494,44 @@ export function DetailView({ workId }: { workId: string }) {
               ))}
             </div>
           ) : (
-            <div className="rounded-2xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
-              Sem links oficiais cadastrados na fonte para esta obra.
+            <div className="rounded-2xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+              Sem links oficiais cadastrados na fonte para esta obra — use o radar externo abaixo.
             </div>
           )}
+
+          {/* radar externo */}
+          <div className="rounded-2xl border border-border bg-card p-4">
+            <p className="mb-1 flex items-center gap-2 text-sm font-black"><Globe className="h-4 w-4 text-primary" /> Radar externo</p>
+            <p className="mb-3 text-[11px] text-muted-foreground">Acompanhe esta obra fora do OtakuVerse — atualizações, discussões e notícias.</p>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {w.malId && (
+                <a href={`https://myanimelist.net/${w.type === "anime" ? "anime" : "manga"}/${w.malId}`} target="_blank" rel="noopener noreferrer" className="flex items-center justify-between rounded-xl bg-secondary px-3.5 py-2.5 text-xs font-bold transition hover:bg-accent">
+                  <span className="flex items-center gap-2"><Newspaper className="h-4 w-4 text-[#2e51a2]" /> MyAnimeList</span>
+                  <span className="text-[10px] font-semibold text-muted-foreground">score e comunidade</span>
+                </a>
+              )}
+              <a href="https://www.mangaupdates.com/series.html?search=" target="_blank" rel="noopener noreferrer" className="flex items-center justify-between rounded-xl bg-secondary px-3.5 py-2.5 text-xs font-bold transition hover:bg-accent">
+                <span className="flex items-center gap-2"><BookOpen className="h-4 w-4 text-[#5a2d82]" /> MangaUpdates</span>
+                <span className="text-[10px] font-semibold text-muted-foreground">licenças e lançamentos</span>
+              </a>
+              <a href={`https://x.com/search?q=${encodeURIComponent(w.title)}`} target="_blank" rel="noopener noreferrer" className="flex items-center justify-between rounded-xl bg-secondary px-3.5 py-2.5 text-xs font-bold transition hover:bg-accent">
+                <span className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-foreground" /> X / Twitter</span>
+                <span className="text-[10px] font-semibold text-muted-foreground">discussões em tempo real</span>
+              </a>
+              <a href={`https://www.google.com/search?q=${encodeURIComponent(w.title + " manga anime news")}&tbm=nws`} target="_blank" rel="noopener noreferrer" className="flex items-center justify-between rounded-xl bg-secondary px-3.5 py-2.5 text-xs font-bold transition hover:bg-accent">
+                <span className="flex items-center gap-2"><Newspaper className="h-4 w-4 text-[#d93025]" /> Google Notícias</span>
+                <span className="text-[10px] font-semibold text-muted-foreground">últimas notícias</span>
+              </a>
+              <a href={`https://anilist.co/search/${w.type === "anime" ? "anime" : "manga"}?q=${encodeURIComponent(w.title)}`} target="_blank" rel="noopener noreferrer" className="flex items-center justify-between rounded-xl bg-secondary px-3.5 py-2.5 text-xs font-bold transition hover:bg-accent">
+                <span className="flex items-center gap-2"><Star className="h-4 w-4 text-[#02a9ff]" /> AniList</span>
+                <span className="text-[10px] font-semibold text-muted-foreground">ficha completa</span>
+              </a>
+              <a href={`https://mangadex.org/search?q=${encodeURIComponent(w.title)}`} target="_blank" rel="noopener noreferrer" className="flex items-center justify-between rounded-xl bg-secondary px-3.5 py-2.5 text-xs font-bold transition hover:bg-accent">
+                <span className="flex items-center gap-2"><Layers className="h-4 w-4 text-[#f97316]" /> MangaDex</span>
+                <span className="text-[10px] font-semibold text-muted-foreground">capítulos e grupos</span>
+              </a>
+            </div>
+          </div>
         </TabsContent>
 
         {/* ABA RELACIONADOS */}

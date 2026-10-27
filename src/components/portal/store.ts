@@ -14,10 +14,12 @@ export interface ExploreFilters {
   status: string;
   sort: string;
   classification: string; // all | safe | suggestive
+  lang: string; // all | JA | KO | ZH | EN | PT-BR
+  mag: string; // all | nome da revista
 }
 
 export const DEFAULT_FILTERS: ExploreFilters = {
-  q: "", type: "all", genre: "all", tag: "all", status: "all", sort: "popular", classification: "all",
+  q: "", type: "all", genre: "all", tag: "all", status: "all", sort: "popular", classification: "all", lang: "all", mag: "all",
 };
 
 export interface SessionUser {
@@ -54,6 +56,8 @@ export const THEMES: { id: string; name: string; dot: string }[] = [
   { id: "sakura", name: "Sakura", dot: "#db2777" },
   { id: "esmeralda", name: "Esmeralda", dot: "#059669" },
   { id: "violeta", name: "Meia-noite violeta", dot: "#8b5cf6" },
+  { id: "cafe", name: "Café & creme", dot: "#92400e" },
+  { id: "neon", name: "Neon cyber", dot: "#06b6d4" },
 ];
 
 export const HYPE_MODES: { id: string; name: string; desc: string }[] = [
@@ -124,6 +128,8 @@ function hashFor(state: { view: View; workId: string | null; filters?: ExploreFi
         if (f.status !== "all") p.set("status", f.status);
         if (f.sort !== "popular") p.set("sort", f.sort);
         if (f.classification !== "all") p.set("classification", f.classification);
+        if (f.lang !== "all") p.set("lang", f.lang);
+        if (f.mag !== "all") p.set("mag", f.mag);
       }
       const qs = p.toString();
       return `#/explorar${qs ? "?" + qs : ""}`;
@@ -153,7 +159,7 @@ function parseHash(): { view: View; workId: string | null; filters?: Partial<Exp
       filters: {
         q: p.get("q") ?? "", type: p.get("type") ?? "all", genre: p.get("genre") ?? "all",
         tag: p.get("tag") ?? "all", status: p.get("status") ?? "all", sort: p.get("sort") ?? "popular",
-        classification: p.get("classification") ?? "all",
+        classification: p.get("classification") ?? "all", lang: p.get("lang") ?? "all", mag: p.get("mag") ?? "all",
       },
     };
   }

@@ -22,9 +22,10 @@ function TypeIcon({ type }: { type: string }) {
 /** Card de obra — capas reais via proxy multi-fonte; se ambas falharem, card de texto estilizado (nunca imagem fake) */
 export const WorkCard = memo(function WorkCard({ work, rank }: { work: WorkData; rank?: number }) {
   const openWork = usePortal((s) => s.openWork);
-  const [imgStage, setImgStage] = useState(0); // 0=proxy, 1=direta, 2=texto
   const proxy = proxyImg(work.cover, work.coverAlt);
   const direct = work.coverAlt ?? work.cover ?? null;
+  // 0=proxy, 1=direta, 2=texto — pula direto para texto se não há URL utilizável
+  const [imgStage, setImgStage] = useState(proxy ? 0 : direct ? 1 : 2);
 
   const tagChips = work.tags.slice(0, 2).map((t) => t.name);
   const isAdult = work.classification === "adult";
@@ -37,14 +38,25 @@ export const WorkCard = memo(function WorkCard({ work, rank }: { work: WorkData;
     >
       <div className="relative aspect-[2/3] w-full overflow-hidden" style={{ background: work.coverColor ? `${work.coverColor}22` : "var(--muted)" }}>
         {/* imagem real: proxy → direta no-referrer → card texto */}
-        {imgStage < 2 && (
+        {imgStage === 0 && proxy && (
           <img
-            src={imgStage === 0 ? (proxy ?? "") : (direct ?? "")}
+            src={proxy}
             alt={`Capa de ${work.title}`}
             loading="lazy"
             decoding="async"
             referrerPolicy="no-referrer"
-            onError={() => setImgStage((s) => s + 1)}
+            onError={() => setImgStage(direct ? 1 : 2)}
+            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.06]"
+          />
+        )}
+        {imgStage === 1 && direct && (
+          <img
+            src={direct}
+            alt={`Capa de ${work.title}`}
+            loading="lazy"
+            decoding="async"
+            referrerPolicy="no-referrer"
+            onError={() => setImgStage(2)}
             className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.06]"
           />
         )}

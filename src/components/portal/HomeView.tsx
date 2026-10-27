@@ -205,7 +205,9 @@ function NewsTeaser({ news }: { news: NewsItem[] }) {
 
 export function HomeView() {
   const [data, setData] = useState<{
-    launches: WorkData[]; hits: WorkData[]; bestsellers: WorkData[]; monthLaunches: WorkData[]; news: NewsItem[]; counts: { total: number };
+    launches: WorkData[]; hits: WorkData[]; bestsellers: WorkData[]; masterpieces: WorkData[];
+    ecchiHits: WorkData[]; manhwaHits: WorkData[]; animePicks: WorkData[]; dramaPicks: WorkData[];
+    monthLaunches: WorkData[]; news: NewsItem[]; counts: { total: number };
   } | null>(null);
   const [loading, setLoading] = useState(true);
   const openExplore = usePortal((s) => s.openExplore);
@@ -285,6 +287,51 @@ export function HomeView() {
             } />
             <CardRow items={data.bestsellers} ranks />
           </section>
+
+          {data.masterpieces?.length > 0 && (
+            <section className="cv-auto">
+              <SectionHeader icon={<Star className="h-4 w-4" />} title="Obras-Primas" sub="As melhores notas de todos os tempos — patrimônio do meio" action={
+                <button onClick={() => openExplore({ sort: "score", q: "" })} className="flex items-center gap-1 text-xs font-bold text-primary hover:underline">ver todas <ChevronRight className="h-3.5 w-3.5" /></button>
+              } />
+              <CardRow items={data.masterpieces} />
+            </section>
+          )}
+
+          {data.manhwaHits?.length > 0 && (
+            <section className="cv-auto">
+              <SectionHeader icon={<Gauge className="h-4 w-4" />} title="Manhwas em Alta" sub="Coreia dominando: os webtoons mais acompanhados" action={
+                <button onClick={() => openExplore({ type: "manhwa", q: "" })} className="flex items-center gap-1 text-xs font-bold text-primary hover:underline">todos <ChevronRight className="h-3.5 w-3.5" /></button>
+              } />
+              <CardRow items={data.manhwaHits} />
+            </section>
+          )}
+
+          {data.ecchiHits?.length > 0 && (
+            <section className="cv-auto">
+              <SectionHeader icon={<Flame className="h-4 w-4" />} title="Ecchi/Sensorial em Alta" sub="Picantes de bom gosto — arte bonita e clima quente (etiquetados)" action={
+                <button onClick={() => openExplore({ classification: "suggestive", q: "" })} className="flex items-center gap-1 text-xs font-bold text-primary hover:underline">explorar <ChevronRight className="h-3.5 w-3.5" /></button>
+              } />
+              <CardRow items={data.ecchiHits} />
+            </section>
+          )}
+
+          {data.animePicks?.length > 0 && (
+            <section className="cv-auto">
+              <SectionHeader icon={<Sparkles className="h-4 w-4" />} title="Animes do Momento" sub="Os mais amados da tela para a sua telinha" action={
+                <button onClick={() => openExplore({ type: "anime", q: "" })} className="flex items-center gap-1 text-xs font-bold text-primary hover:underline">todos <ChevronRight className="h-3.5 w-3.5" /></button>
+              } />
+              <CardRow items={data.animePicks} />
+            </section>
+          )}
+
+          {data.dramaPicks?.length > 0 && (
+            <section className="cv-auto">
+              <SectionHeader icon={<Star className="h-4 w-4" />} title="Dramas em Destaque" sub="K-dramas, C-dramas, J-dramas e tailandeses imperdíveis" action={
+                <button onClick={() => openExplore({ type: "drama", q: "" })} className="flex items-center gap-1 text-xs font-bold text-primary hover:underline">todos <ChevronRight className="h-3.5 w-3.5" /></button>
+              } />
+              <CardRow items={data.dramaPicks} />
+            </section>
+          )}
 
           {data.monthLaunches.length > 0 && (
             <section className="cv-auto">

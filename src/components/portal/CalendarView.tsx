@@ -8,6 +8,31 @@ import type { WorkData } from "@/lib/types";
 
 const WEEKDAYS = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
 
+const STREAMING_SITES: Record<string, string> = {
+  Netflix: "Netflix",
+  Crunchyroll: "Crunchyroll",
+  "Amazon Prime Video": "Prime Video",
+  Hulu: "Hulu",
+  HIDIVE: "HIDIVE",
+  BilibiliTV: "Bilibili",
+  "iQ.com": "iQIYI",
+  MuseAsia: "Muse Asia",
+  "Ani-One": "Ani-One",
+  Viki: "Viki",
+  "Viki (Rakuten)": "Viki",
+  DisneyPlus: "Disney+",
+};
+
+function streamOf(w: WorkData): string | null {
+  for (const l of w.extLinks ?? []) {
+    if (STREAMING_SITES[l.site] && (l.type ?? "").toUpperCase().includes("STREAM")) return STREAMING_SITES[l.site];
+  }
+  for (const l of w.extLinks ?? []) {
+    if (STREAMING_SITES[l.site]) return STREAMING_SITES[l.site];
+  }
+  return null;
+}
+
 export function CalendarView() {
   const [data, setData] = useState<{ byWeekday: { day: number; items: WorkData[] }[]; month: string; monthItems: WorkData[] } | null>(null);
   const [monthOffset, setMonthOffset] = useState(0);
@@ -72,12 +97,19 @@ export function CalendarView() {
                     return (
                       <button key={w.id} onClick={() => openWork(w.id)} className="flex items-center gap-2 rounded-xl bg-secondary/70 px-2.5 py-2 text-left transition hover:bg-accent">
                         <div className="h-11 w-8 shrink-0 overflow-hidden rounded-md" style={{ background: w.coverColor ? `${w.coverColor}33` : "var(--muted)" }}>
-                          <img src={`/api/img?u=${encodeURIComponent(w.cover)}`} alt="" loading="lazy" referrerPolicy="no-referrer" className="h-full w-full object-cover" />
+                          {w.cover ? (
+                            <img src={`/api/img?u=${encodeURIComponent(w.cover)}`} alt="" loading="lazy" referrerPolicy="no-referrer" className="h-full w-full object-cover" />
+                          ) : (
+                            <div className="flex h-full w-full items-center justify-center text-[8px] font-black text-muted-foreground">{w.title.slice(0, 2).toUpperCase()}</div>
+                          )}
                         </div>
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-[11px] font-bold">{w.title}</p>
-                          <p className="flex items-center gap-1 text-[10px] text-muted-foreground">
-                            <Clock className="h-2.5 w-2.5" /> ep {w.nextEpisodeNum ?? "?"} · {d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                          <p className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                            <Clock className="h-2.5 w-2.5 shrink-0" /> ep {w.nextEpisodeNum ?? "?"} · {d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                            {streamOf(w) && (
+                              <span className="ml-auto shrink-0 rounded bg-primary/10 px-1.5 py-0.5 text-[9px] font-black text-primary">{streamOf(w)}</span>
+                            )}
                           </p>
                         </div>
                       </button>

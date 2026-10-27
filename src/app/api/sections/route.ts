@@ -45,6 +45,36 @@ export async function GET() {
   // 3) Mais buscados (proxy honesto de vendas: popularidade global)
   const bestsellers = [...all].sort((a, b) => (b.favourites ?? 0) - (a.favourites ?? 0)).slice(0, 24);
 
+  // 4) Obras-primas (melhores notas de todos os tempos)
+  const masterpieces = all
+    .filter((w) => (w.avgScore ?? 0) >= 80 && w.cover)
+    .sort((a, b) => (b.avgScore ?? 0) - (a.avgScore ?? 0))
+    .slice(0, 24);
+
+  // 5) Ecchi/Sensorial em alta (gosto do usuário: ecchi + boa arte + história)
+  const ecchiHits = all
+    .filter((w) => w.classification === "suggestive" && w.cover)
+    .sort((a, b) => (b.favourites ?? 0) - (a.favourites ?? 0))
+    .slice(0, 24);
+
+  // 6) Manhwas em alta (KR)
+  const manhwaHits = all
+    .filter((w) => w.type === "manhwa" && w.cover)
+    .sort((a, b) => (b.popularity ?? 0) - (a.popularity ?? 0))
+    .slice(0, 24);
+
+  // 7) Animes do momento
+  const animePicks = all
+    .filter((w) => w.type === "anime" && w.cover)
+    .sort((a, b) => (b.favourites ?? 0) - (a.favourites ?? 0))
+    .slice(0, 24);
+
+  // 8) Dramas em destaque (KR/CN/JP/TH)
+  const dramaPicks = all
+    .filter((w) => w.type === "drama" && w.cover)
+    .sort((a, b) => (b.popularity ?? 0) - (a.popularity ?? 0))
+    .slice(0, 24);
+
   // 4) Estreias do mês (calendário teaser)
   const monthKey = new Date().toISOString().slice(0, 7);
   const monthLaunches = all
@@ -59,6 +89,11 @@ export async function GET() {
     launches,
     hits,
     bestsellers,
+    masterpieces,
+    ecchiHits,
+    manhwaHits,
+    animePicks,
+    dramaPicks,
     monthLaunches,
     news,
     counts: { total: all.length },

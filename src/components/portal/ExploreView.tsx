@@ -34,7 +34,16 @@ const STATUSES = [
   { v: "NOT_YET_RELEASED", label: "Não lançado" },
 ];
 
-const PER_PAGE = 60;
+const LANGS = [
+  { v: "all", label: "Qualquer idioma" },
+  { v: "JA", label: "Japonês (original)" },
+  { v: "KO", label: "Coreano (original)" },
+  { v: "ZH", label: "Chinês (original)" },
+  { v: "EN", label: "Inglês disponível" },
+  { v: "PT-BR", label: "Português (BR)" },
+];
+
+const PER_PAGE_OPTIONS = [60, 120, 180];
 
 export function ExploreView() {
   const filters = usePortal((s) => s.filters);
@@ -43,7 +52,8 @@ export function ExploreView() {
   const [items, setItems] = useState<WorkData[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
-  const [facets, setFacets] = useState<{ genres: { name: string; count: number }[]; tags: { name: string; count: number }[] }>({ genres: [], tags: [] });
+  const [perPage, setPerPage] = useState(60);
+  const [facets, setFacets] = useState<{ genres: { name: string; count: number }[]; tags: { name: string; count: number }[]; magazines?: { name: string; count: number }[] }>({ genres: [], tags: [] });
   const [loading, setLoading] = useState(true);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [liveResults, setLiveResults] = useState<WorkData[] | null>(null); // busca ao vivo AniList
@@ -55,7 +65,7 @@ export function ExploreView() {
       setLoading(true);
       const params = new URLSearchParams({
         page: String(p),
-        perPage: String(PER_PAGE),
+        perPage: String(perPage),
       });
       if (filters.type !== "all") params.set("type", filters.type);
       if (filters.genre !== "all") params.set("genre", filters.genre);
@@ -63,6 +73,8 @@ export function ExploreView() {
       if (filters.status !== "all") params.set("status", filters.status);
       if (filters.sort !== "popular") params.set("sort", filters.sort);
       if (filters.classification !== "all") params.set("classification", filters.classification);
+      if (filters.lang !== "all") params.set("lang", filters.lang);
+      if (filters.mag !== "all") params.set("mag", filters.mag);
       if (filters.q.trim()) params.set("q", filters.q.trim());
       fetch(`/api/works?${params.toString()}`)
         .then((r) => r.json())
@@ -76,12 +88,12 @@ export function ExploreView() {
         .catch(() => {})
         .finally(() => setLoading(false));
     },
-    [filters]
+    [filters, perPage]
   );
 
   useEffect(() => {
     setPage(1);
-  }, [filters]);
+  }, [filters, perPage]);
 
   useEffect(() => {
     fetchPage(page);
@@ -107,7 +119,7 @@ export function ExploreView() {
     };
   }, [filters.q]);
 
-  const totalPages = Math.max(1, Math.ceil(total / PER_PAGE));
+  const totalPages = Math.max(1, Math.ceil(total / perPage));
   const activeChips = useMemo(() => {
     const chips: { label: string; clear: () => void }[] = [];
     if (filters.q) chips.push({ label: `"${filters.q}"`, clear: () => setFilters({ q: "" }) });
@@ -116,6 +128,8 @@ export function ExploreView() {
     if (filters.tag !== "all") chips.push({ label: filters.tag, clear: () => setFilters({ tag: "all" }) });
     if (filters.status !== "all") chips.push({ label: STATUSES.find((s) => s.v === filters.status)?.label ?? filters.status, clear: () => setFilters({ status: "all" }) });
     if (filters.classification !== "all") chips.push({ label: filters.classification === "suggestive" ? "Ecchi/Sensorial" : filters.classification, clear: () => setFilters({ classification: "all" }) });
+    if (filters.lang !== "all") chips.push({ label: LANGS.find((l) => l.v === filters.lang)?.label ?? filters.lang, clear: () => setFilters({ lang: "all" }) });
+    if (filters.mag !== "all") chips.push({ label: `revista: ${filters.mag}`, clear: () => setFilters({ mag: "all" }) });
     return chips;
   }, [filters, setFilters]);
 
@@ -178,7 +192,7 @@ export function ExploreView() {
 
       {/* filtros avançados */}
       {showAdvanced && (
-        <div className="grid gap-3 rounded-2xl border border-border bg-card p-4 sm:grid-cols-3">
+        <div className="grid gap-3 rounded-2xl border border-border bg-card p-4 sm:grid-cols-2 lg:grid-cols-5">
           <label className="text-xs font-bold text-muted-foreground">
             Gênero
             <select value={filters.genre} onChange={(e) => setFilters({ genre: e.target.value })} className="mt-1 h-10 w-full rounded-xl border border-input bg-background px-3 text-sm font-semibold text-foreground">
@@ -205,6 +219,23 @@ export function ExploreView() {
               ))}
             </select>
           </label>
+          <label className="text-xs font-bold text-muted-foreground">
+            Idioma
+            <select value={filters.lang} onChange={(e) => setFilters({ lang: e.target.value })} className="mt-1 h-10 w-full rounded-xl border border-input bg-background px-3 text-sm font-semibold text-foreground">
+              {LANGS.map((l) => (
+                <option key={l.v} value={l.v}>{l.label}</option>
+              ))}
+            </select>
+          </label>
+          <label className="text-xs font-bold text-muted-foreground">
+            Revista / publicação
+            <select value={filters.mag} onChange={(e) => setFilters({ mag: e.target.value })} className="mt-1 h-10 w-full rounded-xl border border-input bg-background px-3 text-sm font-semibold text-foreground">
+              <option value="all">Todas as revistas</option>
+              {(facets.magazines ?? []).map((m) => (
+                <option key={m.name} value={m.name}>{m.name} ({m.count})</option>
+              ))}
+            </select>
+          </label>
         </div>
       )}
 
@@ -223,16 +254,28 @@ export function ExploreView() {
       )}
 
       {/* resultados */}
-      <div className="flex items-baseline justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm text-muted-foreground">
           {loading ? "Buscando..." : `${total.toLocaleString("pt-BR")} obras encontradas`}
           {!loading && total > 0 && <span className="ml-1">· página {page} de {totalPages.toLocaleString("pt-BR")}</span>}
         </p>
+        <div className="flex items-center gap-1.5 text-xs">
+          <span className="font-bold text-muted-foreground">por página:</span>
+          {PER_PAGE_OPTIONS.map((n) => (
+            <button
+              key={n}
+              onClick={() => setPerPage(n)}
+              className={`rounded-lg px-2.5 py-1 font-bold transition ${perPage === n ? "bg-primary text-primary-foreground" : "border border-border bg-card text-muted-foreground hover:text-foreground"}`}
+            >
+              {n}
+            </button>
+          ))}
+        </div>
       </div>
 
       {loading ? (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-          {Array.from({ length: PER_PAGE }).map((_, i) => (
+          {Array.from({ length: Math.min(perPage, 60) }).map((_, i) => (
             <div key={i} className="space-y-2">
               <div className="skel aspect-[2/3] w-full rounded-2xl" />
               <div className="skel h-3.5 w-4/5 rounded" />

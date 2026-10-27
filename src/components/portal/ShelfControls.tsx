@@ -6,7 +6,17 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { SHELF_STATUSES, type WorkData } from "@/lib/types";
+import { type WorkData } from "@/lib/types";
+
+/** Metadados de exibição dos status da prateleira (ícone + rótulo PT-BR) */
+const SHELF_META: { key: string; icon: string; label: string }[] = [
+  { key: "READING", icon: "📖", label: "Lendo" },
+  { key: "PLANNING", icon: "🔖", label: "Quero ler" },
+  { key: "COMPLETED", icon: "✅", label: "Concluído" },
+  { key: "FAVORITE", icon: "❤️", label: "Favorito" },
+  { key: "PAUSED", icon: "⏸️", label: "Pausado" },
+  { key: "DROPPED", icon: "🚪", label: "Abandonado" },
+];
 import { usePortal } from "./store";
 import { useSaveWork, fetchShelf, fetchLists, addToList } from "./shelf";
 import { useToast } from "@/hooks/use-toast";
@@ -110,7 +120,7 @@ export function ShelfControls({ work }: { work: WorkData }) {
             <SelectValue placeholder={<span className="flex items-center gap-2"><Bookmark className="h-4 w-4" /> Salvar na biblioteca</span>} />
           </SelectTrigger>
           <SelectContent>
-            {SHELF_STATUSES.map((s) => (
+            {SHELF_META.map((s) => (
               <SelectItem key={s.key} value={s.key}>{s.icon} {s.label}</SelectItem>
             ))}
           </SelectContent>

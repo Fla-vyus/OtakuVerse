@@ -115,7 +115,7 @@ export function MagazineView() {
     let alive = true;
     setDetailLoading(true);
     setDetail(null);
-    fetch(`/api/magazines?key=${encodeURIComponent(magazineKey)}&adult=${adultOk ? 1 : 0}`)
+    fetch(`/api/magazines?key=${encodeURIComponent(magazineKey)}&adult=${adultOk() ? 1 : 0}`)
       .then((r) => r.json())
       .then((d) => { if (alive && d.ok) setDetail(d); })
       .catch(() => {})
@@ -134,7 +134,7 @@ export function MagazineView() {
     const mag = detail?.magazine;
     return (
       <div className="fade-in space-y-5">
-        <Button variant="outline" size="sm" onClick={() => openMagazine(null)} className="gap-1.5">
+        <Button variant="outline" size="sm" onClick={() => openMagazine("")} className="gap-1.5">
           <ChevronLeft className="h-4 w-4" /> Todas as revistas
         </Button>
 
@@ -175,7 +175,7 @@ export function MagazineView() {
                 </h2>
                 <div className="flex flex-wrap gap-1.5">
                   {mag.accepts.map((a) => (
-                    <button key={a} onClick={() => openExplore({ magazine: mag.key, genre: "all" })}
+                    <button key={a} onClick={() => openExplore({ mag: mag.name, genre: "all" })}
                       className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs font-semibold text-emerald-800 transition hover:bg-emerald-500/20 dark:text-emerald-200">
                       {a}
                     </button>
@@ -228,7 +228,7 @@ export function MagazineView() {
                   </div>
                 </dl>
                 <Button size="sm" className="mt-4 bg-brand-gradient font-bold text-white hover:brightness-110"
-                  onClick={() => openExplore({ magazine: mag.key })}>
+                  onClick={() => openExplore({ mag: mag.name })}>
                   <BookMarked className="h-4 w-4" /> Explorar as {fmtCount(detail!.total)} obras da revista
                 </Button>
               </section>

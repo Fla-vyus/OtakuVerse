@@ -47,6 +47,13 @@ model Work {
   lastUpdate     Int? // unix seconds — última atualização na fonte
   nextEpisodeAt  String? // anime: data real do próximo episódio (ISO)
   nextEpisodeNum Int?
+  coverAlts      String? // JSON string[] — capas alternativas reais (multi-fonte)
+  langs          String? // JSON string[] — idiomas de tradução disponíveis (MangaDex)
+  ptTags         String? // JSON string[] — tags/gêneros traduzidos PT-BR (via tagmap)
+  trending       Int? // posição atual em tendência (1 = topo)
+  trendingAt     Int? // unix seconds da última leitura de tendência
+  spicy          Int @default(0) // camada sensorial: 0 livre · 1 ecchi/suggestive · 2 adulto
+  follows        Int? // seguidores (MangaDex) — proxy social de hype
   createdAt      DateTime @default(now())
 
   @@index([type, popularity])
@@ -66,10 +73,16 @@ model User {
   settings     String? // JSON { theme, hypeMode, favorites... }
   adultMode    Boolean  @default(false)
   adultConsent String? // ISO date do consentimento +18
+  avatarHue    Int? // matiz do banner personalizado do perfil
+  bannerHue    Int? // matiz do banner personalizado do perfil
+  prefs        String? // JSON preferências extras (labels, privacy...)
+  tokenVersion Int      @default(0) // incrementa para invalidar sessões antigas
   createdAt    DateTime @default(now())
   lastLoginAt  DateTime?
   library      LibraryItem[]
   sessions     Session[]
+  shelf        ShelfEntry[]
+  lists        UserList[]
 }
 
 model Session {
@@ -107,4 +120,59 @@ model EventLog {
   at      DateTime @default(now())
 
   @@index([at])
+}
+
+// Prateleira pessoal (v2 experimental — mesmo conceito da LibraryItem com progresso)
+model ShelfEntry {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workId    String
+  status    String   @default("PLANNING") // READING | PLANNING | COMPLETED | FAVORITE | PAUSED | DROPPED
+  rating    Int?
+  progress  Int      @default(0)
+  note      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, workId])
+  @@index([userId, updatedAt])
+}
+
+// Listas customizadas do usuário (coleções nomeadas de obras)
+model UserList {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name        String
+  emoji       String   @default("📚")
+  description String?
+  workIds     String   @default("[]") // JSON string[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId])
+}
+
+// Estado do pulso de sincronização (linha única id="main")
+model SyncState {
+  id           String   @id
+  lastSync     Int      @default(0) // unix seconds
+  worksTouched Int      @default(0)
+  note         String?
+}
+
+// Metadados da última sincronização por fonte (id="anilist")
+model SyncMeta {
+  id       String @id
+  lastSync Int    @default(0) // unix seconds
+  added    Int    @default(0)
+  updated  Int    @default(0)
+}
+
+// Cache persistente do feed de notícias (linha única id="mal-rss")
+model NewsCache {
+  id        String @id
+  fetchedAt Int    @default(0) // unix seconds
+  items     String @default("[]") // JSON NewsItem[]
 }

@@ -29,7 +29,7 @@ export async function doRefresh(): Promise<{ refreshed: number; expanded: number
       await db.work.upsert({
         where: { id: String(m.id) },
         create: { ...row, ...cls },
-        update: { ...row, classification: cls.classification },
+        update: { ...row, classification: cls.classification, adultTags: cls.adultTags, spicy: cls.spicy },
       });
       refreshed++;
     }
@@ -79,8 +79,10 @@ export async function doRefresh(): Promise<{ refreshed: number; expanded: number
 }
 
 export async function GET(req: NextRequest) {
+  // TRANCADO: exige chave (definida no .env como CRON_KEY). A chamada interna do
+  // instrumentation.ts usa doRefresh() direto e não passa por aqui.
   const key = req.nextUrl.searchParams.get("key");
-  if (key && key !== process.env.CRON_KEY) {
+  if (!process.env.CRON_KEY || key !== process.env.CRON_KEY) {
     return NextResponse.json({ ok: false, error: "Chave inválida" }, { status: 403 });
   }
   const res = await doRefresh();

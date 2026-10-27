@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { anilistFetch, toWorkRow } from "@/lib/anilist";
 import { mdFetch, mdToWorkRow, sleep } from "@/lib/sources/mangadex";
@@ -48,7 +48,12 @@ const SYNC_FIELDS = `
  * Retry-After e abre circuit breaker se uma fonte cair — sem bloqueios.
  * A ordem das fases alterna a cada execução para distribuir a carga entre fontes.
  */
-export async function POST() {
+export async function POST(req: NextRequest) {
+  // TRANCADO: job pesado de sincronização multi-fonte — exige a chave do cron
+  const key = req.nextUrl.searchParams.get("key");
+  if (!process.env.CRON_KEY || key !== process.env.CRON_KEY) {
+    return NextResponse.json({ ok: false, error: "Chave inválida" }, { status: 403 });
+  }
   try {
     const meta = await db.syncMeta.findUnique({ where: { id: "anilist" } });
     const now = Math.floor(Date.now() / 1000);

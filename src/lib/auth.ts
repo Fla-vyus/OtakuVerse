@@ -83,6 +83,21 @@ export function sessionCookie(raw: string) {
   };
 }
 
+/** Cria uma nova sessão para o usuário e devolve o token cru (alias compatível). */
+export async function signSession(userId: string, _tokenVersion?: number): Promise<string> {
+  return createSession(userId);
+}
+
+/** Header Set-Cookie serializado para a sessão (uso em rotas route handler). */
+export function sessionCookieHeader(raw: string, secure = false): string {
+  return `${SESSION_COOKIE}=${raw}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_DAYS * 86400}${secure ? "; Secure" : ""}`;
+}
+
+/** Header Set-Cookie que expira a sessão (logout / exclusão de conta). */
+export function clearCookieHeader(_secure = false): string {
+  return `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`;
+}
+
 // ---------- Rate limit (bucket em memória por IP) ----------
 const buckets = new Map<string, { n: number; reset: number }>();
 

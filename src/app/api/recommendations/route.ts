@@ -10,8 +10,10 @@ export async function GET(req: NextRequest) {
   try {
     const sp = req.nextUrl.searchParams;
     const user = await getSessionUser(req);
-    const adult = sp.get("adult") === "1";
-    const explicit = adult && sp.get("explicit") === "1";
+    // Gating +18: camadas explícitas SÓ com sessão válida e Modo +18 ativo
+    const allowed = !!user?.adultMode;
+    const adult = sp.get("adult") === "1" && allowed;
+    const explicit = adult && sp.get("explicit") === "1" && allowed;
     const seedGenres = (sp.get("genres") ?? "").split(",").map((s) => s.trim()).filter(Boolean);
     const seedTags = (sp.get("tags") ?? "").split(",").map((s) => s.trim()).filter(Boolean);
     const excludeIds = (sp.get("exclude") ?? "").split(",").filter(Boolean);

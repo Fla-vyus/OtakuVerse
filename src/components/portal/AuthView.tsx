@@ -115,7 +115,7 @@ export function AuthView() {
         </ul>
         <p className="text-[11px] text-white/60">
           Ao criar conta você concorda com os <button onClick={() => go("legal")} className="underline">Termos</button> e a{" "}
-          <button onClick={() => usePortal.setState({ legalTab: "privacidade" }) || go("legal")} className="underline">Política de Privacidade</button>.
+          <button onClick={() => { usePortal.setState({ legalTab: "privacidade" }); go("legal"); }} className="underline">Política de Privacidade</button>.
         </p>
       </div>
 
@@ -200,8 +200,8 @@ export function AuthView() {
               <input type="checkbox" checked={accepted} onChange={(e) => setAccepted(e.target.checked)} className="mt-0.5 h-4 w-4 accent-[var(--primary)]" />
               <span>
                 Li e aceito os <button type="button" onClick={() => go("legal")} className="font-bold text-primary underline">Termos de Uso</button>, a{" "}
-                <button type="button" onClick={() => usePortal.setState({ legalTab: "privacidade" }) || go("legal")} className="font-bold text-primary underline">Política de Privacidade</button> e as{" "}
-                <button type="button" onClick={() => usePortal.setState({ legalTab: "regras" }) || go("legal")} className="font-bold text-primary underline">Regras da comunidade</button>.
+                <button type="button" onClick={() => { usePortal.setState({ legalTab: "privacidade" }); go("legal"); }} className="font-bold text-primary underline">Política de Privacidade</button> e as{" "}
+                <button type="button" onClick={() => { usePortal.setState({ legalTab: "regras" }); go("legal"); }} className="font-bold text-primary underline">Regras da comunidade</button>.
               </span>
             </label>
           )}

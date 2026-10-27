@@ -57,6 +57,7 @@ export interface WorkData {
   isAdult: boolean;
   classification: Classification;
   adultTags?: string[];
+  ptTags?: string[]; // tags/gêneros traduzidos PT-BR (quando indexados)
   genres: string[];
   tags: TagRef[];
   avgScore?: number | null;
@@ -143,6 +144,7 @@ export function parseWork(raw: any): WorkData {
     isAdult: !!raw.isAdult,
     classification: (raw.classification ?? (raw.isAdult ? "adult" : "safe")) as Classification,
     adultTags: safeJson(raw.adultTags, []),
+    ptTags: safeJson(raw.ptTags, []),
     genres: safeJson(raw.genres, []),
     tags: safeJson(raw.tags, []),
     avgScore: raw.avgScore ?? null,
@@ -351,3 +353,7 @@ export function fmtNum(n?: number | null): string {
 export const COUNTRY_FLAG: Record<string, string> = {
   JP: "🇯🇵", KR: "🇰🇷", CN: "🇨🇳", TW: "🇹🇼", TH: "🇹🇭", ES: "🇪🇸",
 };
+
+/** Status canônicos da prateleira (usados em /api/shelf e ShelfControls) */
+export const SHELF_STATUSES = ["READING", "PLANNING", "COMPLETED", "FAVORITE", "PAUSED", "DROPPED"] as const;
+export type ShelfStatus = (typeof SHELF_STATUSES)[number];

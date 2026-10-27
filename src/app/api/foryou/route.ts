@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { forYouPage } from "@/lib/works";
+import { getSessionUser } from "@/lib/auth";
+import { rateLimit, tooMany, clientIp } from "@/lib/security";
 
 export const dynamic = "force-dynamic";
 
@@ -13,8 +15,15 @@ interface Body {
 }
 
 export async function POST(req: NextRequest) {
+  const rl = rateLimit(`foryou:${clientIp(req)}`, 30, 60_000);
+  if (!rl.ok) return tooMany(rl.retryAfter);
   try {
     const body: Body = await req.json().catch(() => ({}));
+    // Gating +18: adulto SÓ com sessão válida e Modo +18 ativo
+    const user = await getSessionUser(req);
+    const allowed = !!user?.adultMode;
+    const asked = body.adult === "show" || body.adult === "only" ? body.adult : "hide";
+    const adult = allowed ? asked : "hide";
     const taste = {
       types: body.taste?.types ?? [],
       genres: body.taste?.genres ?? [],
@@ -24,7 +33,6 @@ export async function POST(req: NextRequest) {
     };
     const favorites = Array.isArray(body.favorites) ? body.favorites.slice(0, 30) : [];
     const lists = body.lists ?? {};
-    const adult = body.adult === "show" || body.adult === "only" ? body.adult : "hide";
     const { items, total } = await forYouPage(taste, favorites, lists, {
       surprise: !!body.surprise,
       page: Number(body.page ?? 1),

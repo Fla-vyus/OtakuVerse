@@ -159,16 +159,16 @@ function MagazineCard({ mag, network }: { mag: MagazineInfo; network?: string | 
           {mag.source === "curado" ? "curado" : mag.source === "mangaupdates" ? "confirmado via MangaUpdates" : "derivado dos dados da obra"}
         </span>
       </div>
-      {mag.accepts?.length > 0 && (
+      {mag.accepts?.length ? (
         <p className="mt-2.5 text-[11px] leading-relaxed text-muted-foreground">
           <span className="font-bold text-foreground">A revista aceita:</span> {mag.accepts.join(", ")}.
         </p>
-      )}
-      {mag.famous?.length > 0 && (
+      ) : null}
+      {mag.famous?.length ? (
         <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
           <span className="font-bold text-foreground">Também publicou:</span> {mag.famous.slice(0, 6).join(", ")}.
         </p>
-      )}
+      ) : null}
       <button
         onClick={() => openExplore({ mag: mag.name, q: "" })}
         className="mt-3 flex items-center gap-1.5 rounded-xl border border-primary/40 bg-primary/10 px-3.5 py-2 text-xs font-bold text-primary transition hover:bg-primary/20"
@@ -232,17 +232,30 @@ export function DetailView({ workId }: { workId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [imgStage, setImgStage] = useState(0);
 
-  useEffect(() => {
+  // reset derivado em render (padrão oficial React) — troca de obra limpa o estado
+  const [prevId, setPrevId] = useState(workId);
+  if (prevId !== workId) {
+    setPrevId(workId);
     setData(null);
     setError(null);
     setImgStage(0);
+  }
+
+  useEffect(() => {
+    let alive = true;
     fetch(`/api/works/${encodeURIComponent(workId)}`)
       .then((r) => r.json().then((d) => ({ ok: r.ok, d })))
       .then(({ ok, d }) => {
+        if (!alive) return;
         if (ok && d.ok) setData(d);
         else setError(d.error ?? "Erro ao carregar obra");
       })
-      .catch(() => setError("Erro de conexão"));
+      .catch(() => {
+        if (alive) setError("Erro de conexão");
+      });
+    return () => {
+      alive = false;
+    };
   }, [workId]);
 
   if (error) {
@@ -575,17 +588,35 @@ function AoiAnalysis({ work }: { work: WorkData }) {
   const [text, setText] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
+  // reset derivado em render ao trocar de obra
+  const [prevWork, setPrevWork] = useState(work.id);
+  if (prevWork !== work.id) {
+    setPrevWork(work.id);
+    setText(null);
     setLoading(true);
+  }
+
+  useEffect(() => {
+    let alive = true;
+    // payload mínimo: só o id — o servidor resolve a obra pelo cache (200x menor)
     fetch("/api/ai/analyze", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ work }),
+      body: JSON.stringify({ id: work.id }),
     })
       .then((r) => r.json())
-      .then((d) => setText(d.ok ? d.analysis : "A Aoi não conseguiu analisar agora. Tente de novo em instantes."))
-      .catch(() => setText("Falha de conexão com a Aoi."))
-      .finally(() => setLoading(false));
+      .then((d) => {
+        if (alive) setText(d.ok ? d.analysis : "A Aoi não conseguiu analisar agora. Tente de novo em instantes.");
+      })
+      .catch(() => {
+        if (alive) setText("Falha de conexão com a Aoi.");
+      })
+      .finally(() => {
+        if (alive) setLoading(false);
+      });
+    return () => {
+      alive = false;
+    };
   }, [work.id]);
 
   return (

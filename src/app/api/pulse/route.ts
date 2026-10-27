@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { buildPtTags } from "@/lib/tagmap";
 import { parseWork } from "@/lib/types";
@@ -55,7 +55,12 @@ async function gql(query: string, variables: Record<string, unknown>): Promise<a
  * O cliente chama este endpoint a cada ~10 min enquanto o site está aberto —
  * é assim que o portal se mantém atualizado sozinho.
  */
-export async function POST() {
+export async function POST(req: NextRequest) {
+  // TRANCADO: job pesado de sincronização — exige a chave do cron (igual /api/cron/refresh)
+  const key = req.nextUrl.searchParams.get("key");
+  if (!process.env.CRON_KEY || key !== process.env.CRON_KEY) {
+    return NextResponse.json({ ok: false, error: "Chave inválida" }, { status: 403 });
+  }
   try {
     const state = await db.syncState.findUnique({ where: { id: "main" } });
     const now = Date.now();

@@ -31,6 +31,7 @@ export interface SessionUser {
   bio?: string | null;
   adultMode: boolean;
   settings?: string | null;
+  createdAt?: string | null;
 }
 
 export interface LibraryEntry {
@@ -79,9 +80,11 @@ interface PortalState {
   library: Record<string, LibraryEntry>;
   syncState: "idle" | "syncing" | "ok" | "error";
   lastSync: string | null;
+  magazineKey: string | null; // revista aberta na visão de detalhe da revista
   go: (view: View) => void;
   openWork: (id: string) => void;
   openExplore: (partial?: Partial<ExploreFilters>) => void;
+  openMagazine: (key: string) => void;
   setFilters: (partial: Partial<ExploreFilters>) => void;
   setTheme: (t: string) => void;
   setHypeMode: (m: string) => void;
@@ -90,6 +93,7 @@ interface PortalState {
   upsertLocal: (e: LibraryEntry) => void;
   removeLocal: (workId: string) => void;
   setSync: (s: PortalState["syncState"], at?: string | null) => void;
+  adultOk: () => boolean;
   refreshAuth: () => Promise<void>;
   syncCloud: (direction: "push" | "pull") => Promise<void>;
 }
@@ -193,6 +197,7 @@ export const usePortal = create<PortalState>((set, get) => ({
   library: {},
   syncState: "idle",
   lastSync: null,
+  magazineKey: null,
 
   go: (view) => {
     const h = hashFor({ view, workId: null, filters: get().filters, legalTab: view === "legal" ? get().legalTab : undefined });
@@ -258,6 +263,13 @@ export const usePortal = create<PortalState>((set, get) => ({
     }
   },
   setSync: (s, at) => set({ syncState: s, ...(at ? { lastSync: at } : {}) }),
+
+  openMagazine: (key) => {
+    set({ magazineKey: key, view: "home", workId: null });
+    window.scrollTo({ top: 0, behavior: "instant" as ScrollBehavior });
+  },
+
+  adultOk: () => !!get().user?.adultMode,
 
   async refreshAuth() {
     try {

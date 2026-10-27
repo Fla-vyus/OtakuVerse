@@ -331,8 +331,8 @@ export function PortalApp() {
               <p className="mb-1.5 text-xs font-bold text-foreground">Institucional</p>
               <div className="flex flex-col gap-1">
                 <button onClick={() => go("legal")} className="w-fit text-left underline-offset-2 hover:text-foreground hover:underline">Termos de Uso</button>
-                <button onClick={() => usePortal.setState({ legalTab: "privacidade" }, false) || go("legal")} className="w-fit text-left underline-offset-2 hover:text-foreground hover:underline">Política de Privacidade</button>
-                <button onClick={() => usePortal.setState({ legalTab: "regras" }, false) || go("legal")} className="w-fit text-left underline-offset-2 hover:text-foreground hover:underline">Regras & Conteúdo +18</button>
+                <button onClick={() => { usePortal.setState({ legalTab: "privacidade" }); go("legal"); }} className="w-fit text-left underline-offset-2 hover:text-foreground hover:underline">Política de Privacidade</button>
+                <button onClick={() => { usePortal.setState({ legalTab: "regras" }); go("legal"); }} className="w-fit text-left underline-offset-2 hover:text-foreground hover:underline">Regras & Conteúdo +18</button>
               </div>
             </div>
             <div className="text-[11px] text-muted-foreground">

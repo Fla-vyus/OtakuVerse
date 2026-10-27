@@ -356,7 +356,7 @@ export function ProfileView() {
                   </label>
                   <label className="mt-2 flex items-start gap-2 text-xs">
                     <input type="checkbox" checked={confirmTerms} onChange={(e) => setConfirmTerms(e.target.checked)} className="mt-0.5 h-4 w-4 accent-[var(--destructive)]" />
-                    <span>Entendo que essa opção fica registrada com data/hora (consentimento) e pode ser desligada a qualquer momento. Conheço as <button onClick={() => usePortal.setState({ legalTab: "regras" }) || go("legal")} className="font-bold text-primary underline">Regras de conteúdo</button>.</span>
+                    <span>Entendo que essa opção fica registrada com data/hora (consentimento) e pode ser desligada a qualquer momento. Conheço as <button onClick={() => { usePortal.setState({ legalTab: "regras" }); go("legal"); }} className="font-bold text-primary underline">Regras de conteúdo</button>.</span>
                   </label>
                   <div className="mt-3 flex gap-2">
                     <button

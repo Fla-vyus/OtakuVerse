@@ -20,21 +20,36 @@ export function AdultZoneView() {
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
 
+  // reset derivado em render (padrão oficial React) — troca de filtro limpa a grade
+  const qKey = `${user?.adultMode ? 1 : 0}|${sort}|${tag}|${q}|${page}`;
+  const [prevKey, setPrevKey] = useState(qKey);
+  if (prevKey !== qKey) {
+    setPrevKey(qKey);
+    setItems(null);
+    setError(null);
+  }
+
   useEffect(() => {
     if (!user?.adultMode) return;
-    setItems(null);
+    let alive = true;
     const p = new URLSearchParams({ zone: "adult", sort, page: String(page), perPage: "60" });
     if (tag !== "all") p.set("tag", tag);
     if (q.trim()) p.set("q", q.trim());
     fetch(`/api/works?${p}`)
       .then((r) => r.json())
       .then((d) => {
+        if (!alive) return;
         if (d.ok) {
           setItems(d.items);
           setTotal(d.total);
         } else setError(d.error);
       })
-      .catch(() => setError("Erro de conexão"));
+      .catch(() => {
+        if (alive) setError("Erro de conexão");
+      });
+    return () => {
+      alive = false;
+    };
   }, [user?.adultMode, sort, tag, q, page]);
 
   if (!authChecked) return <div className="py-20 text-center"><Loader2 className="mx-auto h-6 w-6 animate-spin text-primary" /></div>;

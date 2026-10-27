@@ -207,3 +207,97 @@ export function CardGrid({ items }: { items: WorkData[] }) {
     </div>
   );
 }
+
+// ---------- Peças compartilhadas (usadas em Rankings/Releases/Streaming/Para Você) ----------
+
+/** Chip do formato da obra */
+export function TypeBadge({ type }: { type: string }) {
+  const t = (TYPE_LABEL[type as WorkData["type"]] ? type : "manga") as WorkData["type"];
+  return (
+    <span className="inline-flex items-center gap-1 rounded-md bg-secondary px-1.5 py-0.5 text-[10px] font-bold text-foreground">
+      <TypeIcon type={t} /> {TYPE_LABEL[t]}
+    </span>
+  );
+}
+
+/** Nota com estrela */
+export function ScoreBadge({ score }: { score?: number | null }) {
+  return (
+    <span className="inline-flex items-center gap-0.5 text-[11px] font-bold">
+      <Star className="h-3 w-3 fill-amber-400 text-amber-400" /> {score ?? "—"}
+    </span>
+  );
+}
+
+/** Capa miniatura com fallback proxy → direta → bloco de cor (nunca imagem fake) */
+export function CoverThumb({ work, className }: { work: WorkData; className?: string }) {
+  const proxy = proxyImg(work.cover, work.coverAlt);
+  const direct = work.coverAlt ?? work.cover ?? null;
+  const [stage, setStage] = useState(proxy ? 0 : direct ? 1 : 2);
+  if (stage === 2 || (!proxy && !direct)) {
+    return (
+      <div
+        className={`flex items-center justify-center text-[10px] font-black text-white ${className ?? ""}`}
+        style={{ background: work.coverColor ?? "var(--accent)" }}
+        aria-label={`Capa de ${work.title}`}
+      >
+        {work.title.slice(0, 14)}
+      </div>
+    );
+  }
+  const src = stage === 0 ? proxy : direct;
+  return (
+    <img
+      src={src ?? undefined}
+      alt={`Capa de ${work.title}`}
+      loading="lazy"
+      decoding="async"
+      referrerPolicy="no-referrer"
+      onError={() => setStage(stage === 0 ? (direct ? 1 : 2) : 2)}
+      className={className}
+    />
+  );
+}
+
+/** Card do "Para Você" com % de afinidade e motivos da recomendação */
+export function ForYouCard({ work, match, reasons, highlight }: { work: WorkData; match: number; reasons: string[]; highlight?: boolean }) {
+  const openWork = usePortal((s) => s.openWork);
+  const pct = Math.max(40, Math.min(99, Math.round(60 + match * 8)));
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={() => openWork(work.id)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") openWork(work.id);
+      }}
+      className={`cv-auto group relative w-full cursor-pointer overflow-hidden rounded-2xl border bg-card text-left transition-all duration-300 hover:-translate-y-1 hover:shadow-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 ${
+        highlight ? "border-primary/70 ring-2 ring-primary/40" : "border-border"
+      }`}
+    >
+      <CoverThumb work={work} className="aspect-[2/3] w-full object-cover" />
+      <span className="bg-brand-gradient absolute right-1.5 top-1.5 rounded-lg px-1.5 py-0.5 text-[10px] font-black text-white shadow">
+        {pct}%
+      </span>
+      <div className="p-2">
+        <p className="line-clamp-2 min-h-[2.3rem] text-[12px] font-bold leading-snug">{work.title}</p>
+        {reasons.length > 0 && (
+          <p className="mt-1 line-clamp-2 text-[10px] leading-snug text-primary">✨ {reasons.join(" · ")}</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Esqueleto de carregamento (mesma forma do WorkCard) */
+export function CardSkeleton() {
+  return (
+    <div className="overflow-hidden rounded-2xl border border-border bg-card" aria-hidden>
+      <div className="skel aspect-[2/3] w-full" />
+      <div className="space-y-1.5 p-2.5">
+        <div className="skel h-3 w-4/5 rounded" />
+        <div className="skel h-2.5 w-2/5 rounded" />
+      </div>
+    </div>
+  );
+}

@@ -90,23 +90,36 @@ export function ExploreView() {
     [filters, perPage]
   );
 
-  useEffect(() => {
+  // reset derivado em render — troca de filtros volta para a página 1
+  const fKey = `${JSON.stringify(filters)}|${perPage}`;
+  const [prevFKey, setPrevFKey] = useState(fKey);
+  if (prevFKey !== fKey) {
+    setPrevFKey(fKey);
     setPage(1);
-  }, [filters, perPage]);
+  }
 
   useEffect(() => {
-    fetchPage(page);
-    topRef.current?.scrollIntoView({ behavior: "instant", block: "start" });
+    // defer 1 tick: evita setState síncrono no corpo do effect (cascata de render)
+    const t = setTimeout(() => {
+      fetchPage(page);
+      topRef.current?.scrollIntoView({ behavior: "instant", block: "start" });
+    }, 0);
+    return () => clearTimeout(t);
   }, [page, fetchPage]);
 
   // busca ao vivo na AniList quando há texto e poucos resultados locais
-  useEffect(() => {
-    if (debounce.current) clearTimeout(debounce.current);
+  // reset derivado em render — limpa resultados ao mudar a busca
+  const q = filters.q.trim();
+  const [prevQ, setPrevQ] = useState(q);
+  if (prevQ !== q) {
+    setPrevQ(q);
     setLiveResults(null);
-    const q = filters.q.trim();
-    if (q.length < 3) return;
+  }
+  useEffect(() => {
+    const term = filters.q.trim();
+    if (term.length < 3) return;
     debounce.current = setTimeout(() => {
-      fetch(`/api/discover?q=${encodeURIComponent(q)}`)
+      fetch(`/api/discover?q=${encodeURIComponent(term)}`)
         .then((r) => r.json())
         .then((d) => {
           if (d.ok && Array.isArray(d.items) && d.items.length) setLiveResults(d.items.slice(0, 12));

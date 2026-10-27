@@ -15,7 +15,7 @@ export async function DELETE(req: NextRequest) {
     if (!rl.ok) return tooMany(rl.retryAfter);
 
     const { password } = await req.json();
-    if (!verifyPassword(String(password ?? ""), user.passwordHash)) {
+    if (!(await verifyPassword(String(password ?? ""), user.passHash))) {
       return NextResponse.json({ ok: false, error: "Senha incorreta — conta não excluída" }, { status: 403 });
     }
     await db.user.delete({ where: { id: user.id } });

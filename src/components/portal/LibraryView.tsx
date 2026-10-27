@@ -22,13 +22,21 @@ export function LibraryView() {
 
   const ids = useMemo(() => Object.keys(library), [library]);
 
-  useEffect(() => {
+  // reset derivado em render (padrão oficial React) — biblioteca esvaziada limpa a grade
+  const [prevIds, setPrevIds] = useState(ids);
+  if (prevIds !== ids) {
+    setPrevIds(ids);
     if (!ids.length) {
-      setLoading(false);
       setWorks({});
-      return;
+      setLoading(false);
+    } else {
+      setLoading(true);
     }
-    setLoading(true);
+  }
+
+  useEffect(() => {
+    if (!ids.length) return;
+    let alive = true;
     Promise.all(
       chunks(ids, 100).map((chunk) =>
         fetch(`/api/works/bulk?ids=${encodeURIComponent(chunk.join(","))}`)
@@ -36,6 +44,7 @@ export function LibraryView() {
           .catch(() => null)
       )
     ).then((batches) => {
+      if (!alive) return;
       const map: Record<string, WorkData> = {};
       for (const b of batches) {
         if (b?.ok) for (const w of b.items) map[w.id] = w;
@@ -43,6 +52,9 @@ export function LibraryView() {
       setWorks(map);
       setLoading(false);
     });
+    return () => {
+      alive = false;
+    };
   }, [ids.join(",")]);
 
   if (!authChecked) return <div className="py-20 text-center"><Loader2 className="mx-auto h-6 w-6 animate-spin text-primary" /></div>;

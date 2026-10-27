@@ -10,7 +10,7 @@ interface Cache {
 }
 
 const g = globalThis as unknown as { __ovCache?: Cache };
-const TTL = 120_000; // 2 min
+const TTL = 300_000; // 5 min — pool de 24k obras é caro de remontar; invalidado por seeds/cron
 
 async function buildCache(): Promise<Cache> {
   const agg = await db.work.aggregate({ _max: { createdAt: true } });
@@ -45,8 +45,10 @@ export async function getWorkById(id: string, adult = false): Promise<WorkData |
 }
 
 // ---------- Classificação ----------
-/** Deriva a classificação de conteúdo a partir dos dados da AniList */
-export function classify(m: { isAdult?: boolean; format?: string | null; tags?: { name: string; rank: number }[]; genres?: string[] }): { classification: Classification; adultTags: string[] } {
+/** Deriva a classificação de conteúdo a partir dos dados da AniList.
+ *  `adultTags` já vai serializado (coluna JSON do banco) e `spicy` é a camada
+ *  sensorial (0 livre · 1 ecchi/suggestive · 2 adulto) usada pelos filtros. */
+export function classify(m: { isAdult?: boolean; format?: string | null; tags?: { name: string; rank: number }[]; genres?: string[] }): { classification: Classification; adultTags: string; spicy: number } {
   if (m.isAdult) {
     const tags = (m.tags ?? []).map((t) => t.name.toLowerCase());
     const adultTags: string[] = [];
@@ -54,14 +56,14 @@ export function classify(m: { isAdult?: boolean; format?: string | null; tags?: 
     if (tags.some((t) => t.includes("hentai") || t.includes("sex"))) adultTags.push("Hentai");
     if (!adultTags.length) adultTags.push("+18");
     adultTags.push("Adulto");
-    return { classification: "adult", adultTags: [...new Set(adultTags)] };
+    return { classification: "adult", adultTags: JSON.stringify([...new Set(adultTags)]), spicy: 2 };
   }
   const tagRanks = new Map((m.tags ?? []).map((t) => [t.name, t.rank]));
   const ecchi = tagRanks.get("Ecchi") ?? 0;
   const nudity = tagRanks.get("Nudity") ?? 0;
   const sensual = tagRanks.get("Succubus") ?? 0;
-  if (ecchi >= 30 || nudity >= 40 || sensual >= 50) return { classification: "suggestive", adultTags: [] };
-  return { classification: "safe", adultTags: [] };
+  if (ecchi >= 30 || nudity >= 40 || sensual >= 50) return { classification: "suggestive", adultTags: "[]", spicy: 1 };
+  return { classification: "safe", adultTags: "[]", spicy: 0 };
 }
 
 // ---------- Similaridade ----------
@@ -210,6 +212,54 @@ export async function getFacets(adult = false) {
 export async function catalogForAI(adult = false): Promise<WorkData[]> {
   const all = await getAllWorks(adult);
   return all;
+}
+
+// ---------- Rankings (métricas da comunidade) ----------
+export type RankMetric = "popular" | "score" | "favorites" | "chapters";
+export type AdultMode = "hide" | "show" | "only";
+
+export async function getRanking(type: string, metric: RankMetric, adult: AdultMode, take = 24): Promise<WorkData[]> {
+  let pool = await getAllWorks(adult !== "hide");
+  if (adult === "only") pool = pool.filter((w) => w.classification === "adult");
+  if (type !== "all") pool = pool.filter((w) => w.type === type);
+  const by: Record<RankMetric, (a: WorkData, b: WorkData) => number> = {
+    popular: (a, b) => (b.popularity ?? 0) - (a.popularity ?? 0),
+    score: (a, b) => (b.avgScore ?? 0) - (a.avgScore ?? 0),
+    favorites: (a, b) => (b.favourites ?? 0) - (a.favourites ?? 0),
+    chapters: (a, b) => (b.chapters ?? 0) - (a.chapters ?? 0),
+  };
+  pool.sort(by[metric] ?? by.popular);
+  return pool.slice(0, Math.min(96, Math.max(1, take)));
+}
+
+// ---------- Para Você (motor de afinidade) ----------
+import { scoreForYou, type TasteProfileLike, type ListEntryLike, type ForYouResult } from "@/lib/scoring";
+
+export interface ForYouOpts {
+  surprise?: boolean;
+  page?: number;
+  perPage?: number;
+  adult?: AdultMode;
+}
+
+export async function forYouPage(
+  taste: TasteProfileLike,
+  favorites: string[],
+  lists: Record<string, ListEntryLike>,
+  opts: ForYouOpts = {}
+): Promise<{ items: ForYouResult[]; total: number }> {
+  const adult = opts.adult ?? "hide";
+  const pool = await getAllWorks(adult !== "hide");
+  const filtered = adult === "only" ? pool.filter((w) => w.classification === "adult") : pool;
+  const byId = new Map(pool.map((w) => [w.id, w]));
+  const favWorks = favorites.map((id) => byId.get(id)).filter((w): w is WorkData => !!w);
+  const scored = filtered
+    .map((w) => scoreForYou(w, taste, favWorks, lists, { excludeIds: new Set(favorites), surprise: !!opts.surprise }))
+    .filter((r) => r.score > -50);
+  scored.sort((a, b) => b.score - a.score);
+  const page = Math.max(1, opts.page ?? 1);
+  const perPage = Math.min(60, Math.max(6, opts.perPage ?? 18));
+  return { items: scored.slice((page - 1) * perPage, page * perPage), total: scored.length };
 }
 
 // ---------- Lançamentos de capítulos (ritmo semanal estimado) ----------

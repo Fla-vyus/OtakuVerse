@@ -41,8 +41,6 @@ export function AuthDialog({ open, onOpenChange }: { open: boolean; onOpenChange
   const [error, setError] = useState("");
   const [agree, setAgree] = useState(false);
   const setUser = usePortal((s) => s.setUser);
-  const setShelfCounts = usePortal((s) => s.setShelfCounts);
-  const openLegal = usePortal((s) => s.openLegal);
   const { toast } = useToast();
 
   const strength = useMemo(() => strengthOf(password), [password]);
@@ -65,7 +63,6 @@ export function AuthDialog({ open, onOpenChange }: { open: boolean; onOpenChange
       if (!d.ok) throw new Error(d.error);
       const me = await fetchMe();
       setUser(me.user);
-      setShelfCounts(me.counts);
       toast({ title: mode === "register" ? `Bem-vindo(a), ${d.user.username}!` : `Bem-vindo(a) de volta, ${d.user.username}!`, description: "Sua biblioteca está pronta e sincronizada na nuvem." });
       onOpenChange(false);
       setUsername("");
@@ -135,8 +132,8 @@ export function AuthDialog({ open, onOpenChange }: { open: boolean; onOpenChange
             <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-border bg-secondary/40 p-2.5 text-[11px] leading-snug text-muted-foreground">
               <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} className="mt-0.5 accent-[var(--primary)]" />
               <span>
-                Li e aceito os <button type="button" className="font-bold text-primary underline" onClick={(e) => { e.preventDefault(); openLegal("termos"); }}>Termos de Uso</button> e a{" "}
-                <button type="button" className="font-bold text-primary underline" onClick={(e) => { e.preventDefault(); openLegal("privacidade"); }}>Política de Privacidade</button> (LGPD).
+                Li e aceito os <button type="button" className="font-bold text-primary underline" onClick={(e) => { e.preventDefault(); usePortal.setState({ legalTab: "termos" }); usePortal.getState().go("legal"); }}>Termos de Uso</button> e a{" "}
+                <button type="button" className="font-bold text-primary underline" onClick={(e) => { e.preventDefault(); usePortal.setState({ legalTab: "privacidade" }); usePortal.getState().go("legal"); }}>Política de Privacidade</button> (LGPD).
               </span>
             </label>
           )}

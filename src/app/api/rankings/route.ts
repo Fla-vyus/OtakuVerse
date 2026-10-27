@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRanking, type RankMetric, type AdultMode } from "@/lib/works";
+import { getSessionUser } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -10,8 +11,11 @@ export async function GET(req: NextRequest) {
     const sp = req.nextUrl.searchParams;
     const type = sp.get("type") ?? "all";
     const metric = (METRICS.includes(sp.get("metric") as RankMetric) ? sp.get("metric") : "popular") as RankMetric;
+    // Gating +18: mostrar/incluir adulto SÓ com sessão válida e Modo +18 ativo
+    const user = await getSessionUser(req);
+    const allowed = !!user?.adultMode;
     const adultParam = sp.get("adult");
-    const adult: AdultMode = adultParam === "show" || adultParam === "only" ? adultParam : "hide";
+    const adult: AdultMode = allowed && (adultParam === "show" || adultParam === "only") ? adultParam : "hide";
     const take = Math.min(96, Math.max(10, Number(sp.get("take") ?? 24)));
     const items = await getRanking(type, metric, adult, take);
     return NextResponse.json({ ok: true, items });

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { parseWork } from "@/lib/types";
+import { getSessionUser } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -11,8 +12,10 @@ function min(rows: any[]) {
 export async function GET(req: NextRequest) {
   try {
     const sp = req.nextUrl.searchParams;
-    const adult = sp.get("adult") === "1";
-    const explicit = adult && sp.get("explicit") === "1";
+    // Gating +18: camadas explícitas SÓ com sessão válida e Modo +18 ativo
+    const user = await getSessionUser(req);
+    const adult = sp.get("adult") === "1" && !!user?.adultMode;
+    const explicit = adult && sp.get("explicit") === "1" && !!user?.adultMode;
     // Camadas: sem adult → geral; adult → spicy ≤1 + geral; adult+explicit → tudo
     const adultFilter = adult ? (explicit ? {} : { spicy: { lte: 1 } }) : { isAdult: false };
     const since120 = new Date(Date.now() - 120 * 86400000).toISOString().slice(0, 10);
@@ -44,7 +47,7 @@ export async function GET(req: NextRequest) {
       db.work.findMany({ where: { chapters: { lte: 5 }, status: "RELEASING", type: { in: ["manga", "manhwa"] }, startDate: { gte: since120 }, ...adultFilter }, orderBy: [{ avgScore: "desc" }, { popularity: "desc" }], take: 20 }),
       db.work.findMany({ where: { type: "manhwa", ...adultFilter }, orderBy: { popularity: "desc" }, take: 22 }),
       // Picante: respeita as camadas (spicy 1 comum; 2 só com explicit)
-      db.work.findMany({ where: explicit ? { spicy: 2 } : { spicy: 1 }, orderBy: { favourites: "desc" }, take: 20 }),
+      db.work.findMany({ where: explicit ? { spicy: 2 } : { spicy: 1, isAdult: false }, orderBy: { favourites: "desc" }, take: 20 }),
       db.work.findMany({ where: { type: "lightnovel", ...adultFilter }, orderBy: { favourites: "desc" }, take: 18 }),
       db.work.findMany({ where: { type: "anime", ...adultFilter }, orderBy: { popularity: "desc" }, take: 22 }),
       db.work.findMany({ where: { avgScore: { gte: 82 }, ...adultFilter }, orderBy: [{ avgScore: "desc" }, { popularity: "desc" }], take: 22 }),

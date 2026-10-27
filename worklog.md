@@ -65,3 +65,24 @@ Work Log:
 
 Stage Summary:
 - OtakuVerse v2.1 = ou igual ou superior à versão perdida em TODOS os eixos do chat: 25.857 obras (vs. "dezenas de milhares" pedido), 9 seções home, 7 temas, filtros idioma+revista, per-page até 180, sinopse PT, radar externo, status de auto-update visível, sem regressões conhecidas.
+
+---
+Task ID: 4
+Agent: main (Z.ai)
+Task: v2.2 — nova auditoria do chat pedida pelo usuário ("falta opções de vendas, revistas, volumes mais vendidos, mangas novos, lançamentos de capitulos... curtir ou salvar nas capas no hover... dramas adicionados sem necessidade").
+
+Work Log:
+- AUDITORIA: comparado chat vs código — confirmadas as lacunas: sem vendas reais, sem página de revistas, sem seção de mangás novos, sem lançamentos de capítulos, WorkCard SEM os botões curtir/salvar no hover (feature amada da versão perdida), dramas presentes em todas as superfícies.
+- CURTIR/SALVAR NA CAPA: WorkCard reescrito (root button→div[role=button] p/ permitir botões aninhados); no hover da capa aparecem ❤️ Curtir (status favorite) e 🔖 Salvar (status plan), com estados ativos (coração vermelho preenchido / check âmbar), tooltips, clique sem abrir o detalhe (stopPropagation), gating de login (sem conta → abre #/conta); mobile mostra sempre (touch não tem hover). Quirk do Tailwind v4 (variante empilhada sm:group-hover:opacity-100 computada como opacity 0 mesmo com :hover ativo) resolvido com CSS próprio .ov-actions em globals.css (determinístico).
+- VENDAS REAIS (Oricon): src/lib/sales.ts com dados públicos reais — séries do ano 2021–2024 (44 entradas), volumes individuais do ano (52 entradas, ex.: JJK Vol.25 1,74 mi em 2024, Kimetsu Vol.23 5,35 mi em 2021) e acumulados históricos (19, ex.: One Piece 516M); matcher de títulos normalizado (título/EN/nativo/sinônimos, aliases como Boku no Hero↔My Hero Academia, Shingeki no Kyojin↔Attack on Titan) — 100% de cobertura de capa real (52/52, 46/46, 19/19); /api/sales (cache 10min); página #/vendas com abas Volumes/Séries/Todos os tempos + filtro por ano + ranking medalhado; home com "Vendas: Volumes Mais Vendidos" (cards ranked com badge Vol. + cópias) e "Séries Mais Vendidas do Ano" (ranking em lista).
+- REVISTAS: /api/magazines agrupa por revista real do banco, enriquece com ficha canônica (editora/demografia/cadência de magazines.ts), filtra coletâneas genéricas derivadas (Antologia shōnen 16,5k etc. fora da grade — 26 revistas reais, 841 obras confirmadas); página #/revistas com cards (editora, demografia, cadência, faixa de capas reais, obras famosas) → exploração filtrada; home com linha "Revistas & Editoras".
+- MANGÁS NOVOS: seção "Acabaram de Chegar" (startDate ≤ hoje — CORRIGIDO bug de obras com data futura 2027 vazando; janela 120d com fallback 365d).
+- LANÇAMENTOS DE CAPÍTULOS: helper central estimateChapterReleases em works.ts — séries RELEASING com lastUpdate real; dia da semana vem do calendário REAL da revista quando conhecido (ex.: "Semanal (quinta)"), senão distribuição estável rotulada como estimativa; trata chapters=null (AniList não contabiliza em andamento → "novo cap"); home com grade semanal compacta (HOJE destacado) e Calendário com grade "lançamentos de capítulos" ao lado dos episódios (badge "a qualquer momento" p/ ritmo defasado).
+- DRAMAS REMOVIDOS (a pedido — "adicionou dramas sem necessidade"): pool público os exclui (works.ts), seção dramaPicks fora da home, chip fora das categorias e do Explorar, contagem do /api/status sem dramas (25.278), footer/metadados/perfil sem menção; dramas ficam inativos no banco (links antigos → "não encontrada").
+- NAV: 8 abas — Início, Explorar, Vendas, Revistas, Calendário, Notícias, Biblioteca, Aoi (+mobile secundária).
+- LINT: zera erros nos arquivos tocados (padrões react-hooks/set-state-in-effect e refs-in-render pré-existentes corrigidos em HomeView/CalendarView: loading derivado em vez de setState síncrono em effect).
+- VERIFICADO (agent-browser desktop+mobile): home (hype, notícias, Lançamentos, Mangás Novos, Capítulos, Vendas volumes+séries, Revistas, Bombando, Top Popularidade, Obras-Primas, Manhwas, Ecchi, Animes, Agenda), hover curtir/salvar funcional (salvar→plan, curtir→favorite, sync nuvem /api/library confirmada, estados visuais), #/vendas (abas+anos), #/revistas (841 obras), #/calendario (grade capítulos HOJE), explorar mobile (9.247 mangás, botões sempre visíveis no touch), console limpo.
+- GIT: commit v2.2.
+
+Stage Summary:
+- OtakuVerse v2.2: catálogo 25.278 obras públicas (sem dramas, adult sempre gated), 8 abas, 14 seções na home, vendas reais Oricon (volumes/séries/histórico), 26 revistas reais navegáveis, mangás novos sem datas futuras, lançamentos de capítulos com calendário real de revistas, curtir/salvar no hover das capas (desktop) e sempre visíveis (mobile) — NADA inferior às rodadas anteriores; tudo commitado.

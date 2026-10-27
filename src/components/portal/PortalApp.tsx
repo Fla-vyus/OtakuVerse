@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import {
   Home, Compass, Sparkles, Search, MoonStar, CalendarDays, Newspaper,
   Library, Palette, User, LogIn, LogOut, ShieldAlert, Loader2, CloudCheck, CloudOff,
+  TrendingUp, BookMarked,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { usePortal, bindHashSync, THEMES, type View } from "./store";
@@ -18,6 +19,8 @@ import { ProfileView } from "./ProfileView";
 import { AuthView } from "./AuthView";
 import { AdultZoneView } from "./AdultZoneView";
 import { LegalView } from "./LegalView";
+import { SalesView } from "./SalesView";
+import { MagazinesView } from "./MagazinesView";
 
 function Logo() {
   const go = usePortal((s) => s.go);
@@ -164,6 +167,8 @@ function UserMenu() {
 const NAV: { view: View; label: string; icon: React.ReactNode }[] = [
   { view: "home", label: "Início", icon: <Home className="h-4 w-4" /> },
   { view: "explore", label: "Explorar", icon: <Compass className="h-4 w-4" /> },
+  { view: "sales", label: "Vendas", icon: <TrendingUp className="h-4 w-4" /> },
+  { view: "magazines", label: "Revistas", icon: <BookMarked className="h-4 w-4" /> },
   { view: "calendar", label: "Calendário", icon: <CalendarDays className="h-4 w-4" /> },
   { view: "news", label: "Notícias", icon: <Newspaper className="h-4 w-4" /> },
   { view: "library", label: "Biblioteca", icon: <Library className="h-4 w-4" /> },
@@ -209,6 +214,8 @@ export function PortalApp() {
       if (h.startsWith("#/assistente")) return { view: "assistant" as View, workId: null };
       if (h.startsWith("#/calendario")) return { view: "calendar" as View, workId: null };
       if (h.startsWith("#/noticias")) return { view: "news" as View, workId: null };
+      if (h.startsWith("#/vendas")) return { view: "sales" as View, workId: null };
+      if (h.startsWith("#/revistas")) return { view: "magazines" as View, workId: null };
       if (h.startsWith("#/biblioteca")) return { view: "library" as View, workId: null };
       if (h.startsWith("#/perfil")) return { view: "profile" as View, workId: null };
       if (h.startsWith("#/conta")) return { view: "auth" as View, workId: null };
@@ -300,6 +307,8 @@ export function PortalApp() {
         {view === "auth" && <AuthView />}
         {view === "adult" && <AdultZoneView />}
         {view === "legal" && <LegalView />}
+        {view === "sales" && <SalesView />}
+        {view === "magazines" && <MagazinesView />}
       </main>
 
       {/* Footer */}
@@ -313,7 +322,7 @@ export function PortalApp() {
               <div>
                 <p className="text-sm font-bold">OtakuVerse</p>
                 <p className="text-[11px] leading-relaxed text-muted-foreground">
-                  Portal de descoberta de mangás, manhwas, manhuas, light novels, animes e dramas.
+                  Portal de descoberta de mangás, manhwas, manhuas, light novels e animes.
                   Catálogo real, atualização automática e nuvem pessoal.
                 </p>
               </div>

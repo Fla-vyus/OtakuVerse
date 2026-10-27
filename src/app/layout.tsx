@@ -14,16 +14,16 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "OtakuVerse — Mangás, Manhwas, LNs, Animes e Dramas com curadoria de IA",
+  title: "OtakuVerse — Mangás, Manhwas, LNs e Animes com curadoria de IA",
   description:
-    "Portal brasileiro para garimpar mangás, manhwas, manhuas, light novels, animes e dramas: catálogo real com milhares de obras, hype do momento, calendário de lançamentos, notícias, revistas de publicação, nuvem pessoal, temas e a waifu curadora Aoi.",
-  keywords: ["mangá", "manhwa", "manhua", "light novel", "anime", "drama", "ecchi", "webtoon", "recomendações", "IA", "waifu"],
+    "Portal brasileiro para garimpar mangás, manhwas, manhuas, light novels e animes: catálogo real com dezenas de milhares de obras, hype do momento, vendas (Oricon), revistas, calendário de capítulos, notícias, nuvem pessoal, temas e a waifu curadora Aoi.",
+  keywords: ["mangá", "manhwa", "manhua", "light novel", "anime", "ecchi", "webtoon", "vendas", "oricon", "revistas", "recomendações", "IA", "waifu"],
   icons: {
     icon: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg",
   },
   openGraph: {
     title: "OtakuVerse",
-    description: "Seu garimpo de mangás, manhwas, LNs, animes e dramas com a waifu curadora Aoi.",
+    description: "Seu garimpo de mangás, manhwas, LNs e animes com a waifu curadora Aoi.",
     siteName: "OtakuVerse",
     type: "website",
   },

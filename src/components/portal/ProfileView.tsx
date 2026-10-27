@@ -315,7 +315,7 @@ export function ProfileView() {
         {/* CONTEÚDO +18 (portão escondido no perfil) */}
         <Section icon={adultMode ? <ShieldAlert className="h-4 w-4" /> : <ShieldOff className="h-4 w-4" />} title="Configurações de conteúdo" sub="Controle fino do que aparece para você">
           <p className="mb-3 text-xs leading-relaxed text-muted-foreground">
-            O catálogo principal do OtakuVerse é sempre limpo: mangás, manhwas, manhuas, LNs, animes e dramas
+            O catálogo principal do OtakuVerse é sempre limpo: mangás, manhwas, manhuas, LNs e animes
             — incluindo obras <span className="font-bold text-foreground">ecchi</span> (sensoriais), que ficam etiquetadas e filtráveis.
             Conteúdo <span className="font-bold text-foreground">adulto (hentai, doujin, +18)</span> fica totalmente fora do catálogo e das buscas.
           </p>

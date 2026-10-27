@@ -346,3 +346,16 @@
   border: 1px solid var(--border);
   border-radius: 1rem 1rem 1rem 0.25rem;
 }
+
+/* ---------- Ações rápidas na capa do card (curtir/salvar no hover) ---------- */
+.ov-actions {
+  opacity: 1;
+  transition: opacity 0.2s ease;
+}
+@media (min-width: 640px) {
+  .ov-actions { opacity: 0; }
+  .group:hover .ov-actions,
+  .group:focus-within .ov-actions {
+    opacity: 1;
+  }
+}

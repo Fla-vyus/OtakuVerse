@@ -12,7 +12,7 @@ export async function GET() {
   }
   try {
     const [total, lastCron] = await Promise.all([
-      db.work.count(),
+      db.work.count({ where: { type: { not: "drama" } } }),
       db.eventLog.findFirst({ where: { kind: "cron_refresh" }, orderBy: { at: "desc" } }),
     ]);
     const data = {

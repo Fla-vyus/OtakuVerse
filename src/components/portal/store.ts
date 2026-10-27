@@ -4,7 +4,7 @@ import { create } from "zustand";
 
 export type View =
   | "home" | "explore" | "detail" | "assistant" | "calendar" | "news"
-  | "library" | "profile" | "auth" | "adult" | "legal";
+  | "library" | "profile" | "auth" | "adult" | "legal" | "sales" | "magazines";
 
 export interface ExploreFilters {
   q: string;
@@ -138,6 +138,8 @@ function hashFor(state: { view: View; workId: string | null; filters?: ExploreFi
     case "assistant": return "#/assistente";
     case "calendar": return "#/calendario";
     case "news": return "#/noticias";
+    case "sales": return "#/vendas";
+    case "magazines": return "#/revistas";
     case "library": return "#/biblioteca";
     case "profile": return "#/perfil";
     case "auth": return "#/conta";
@@ -166,6 +168,8 @@ function parseHash(): { view: View; workId: string | null; filters?: Partial<Exp
   if (h.startsWith("#/assistente")) return { view: "assistant", workId: null };
   if (h.startsWith("#/calendario")) return { view: "calendar", workId: null };
   if (h.startsWith("#/noticias")) return { view: "news", workId: null };
+  if (h.startsWith("#/vendas")) return { view: "sales", workId: null };
+  if (h.startsWith("#/revistas")) return { view: "magazines", workId: null };
   if (h.startsWith("#/biblioteca")) return { view: "library", workId: null };
   if (h.startsWith("#/perfil")) return { view: "profile", workId: null };
   if (h.startsWith("#/conta")) return { view: "auth", workId: null };

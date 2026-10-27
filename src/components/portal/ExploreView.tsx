@@ -14,7 +14,6 @@ const TYPES = [
   { v: "manhua", label: "Manhua" },
   { v: "lightnovel", label: "Light Novel" },
   { v: "anime", label: "Anime" },
-  { v: "drama", label: "Drama" },
 ];
 
 const SORTS = [

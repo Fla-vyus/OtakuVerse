@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, Flame, Star, Sparkles, Trophy, Rocket, CalendarDays, Newspaper, Gauge, ListFilter } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ChevronLeft, ChevronRight, Flame, Star, Sparkles, Trophy, Rocket, CalendarDays, Newspaper, Gauge, Layers, BookOpen, Clock, TrendingUp, BookMarked, Check } from "lucide-react";
 import { usePortal, HYPE_MODES } from "./store";
 import { CardRow, WorkCard } from "./WorkCard";
 import type { WorkData } from "@/lib/types";
@@ -9,6 +9,42 @@ import type { WorkData } from "@/lib/types";
 interface NewsItem {
   id: string; kind: string; title: string; summary: string;
   image: string | null; date: string; workId: string; badge: string;
+}
+
+interface ChapterRelease {
+  work: WorkData;
+  nextChapter: number | null;
+  dateISO: string;
+  weekday: string;
+  stale: boolean;
+}
+
+interface SaleItem {
+  series: string;
+  volume?: number;
+  year: number;
+  copies: number;
+  note?: string;
+  workId: string;
+  cover: string;
+  coverColor?: string | null;
+  title: string;
+  type: string;
+}
+
+interface MagEntry {
+  name: string;
+  publisher: string | null;
+  demographic: string | null;
+  schedule: string | null;
+  count: number;
+  covers: { id: string; title: string; cover: string; coverColor: string | null }[];
+}
+
+function fmtCopies(n: number): string {
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(2).replace(/\.?0+$/, "") + " mi";
+  if (n >= 1000) return Math.round(n / 1000) + " mil";
+  return String(n);
 }
 
 function SectionHeader({ icon, title, sub, action }: { icon: React.ReactNode; title: string; sub: string; action?: React.ReactNode }) {
@@ -31,19 +67,20 @@ function HypeCarousel() {
   const hypeMode = usePortal((s) => s.hypeMode);
   const setHypeMode = usePortal((s) => s.setHypeMode);
   const openWork = usePortal((s) => s.openWork);
-  const openWorkRef = useRef(openWork);
-  openWorkRef.current = openWork;
   const [items, setItems] = useState<WorkData[] | null>(null);
+  const [fetchedMode, setFetchedMode] = useState<string>(hypeMode);
   const [idx, setIdx] = useState(0);
   const [paused, setPaused] = useState(false);
 
   useEffect(() => {
     let alive = true;
-    setItems(null);
     fetch(`/api/hype?mode=${hypeMode}`)
       .then((r) => r.json())
       .then((d) => {
-        if (alive && d.ok) setItems(d.items);
+        if (alive && d.ok) {
+          setItems(d.items);
+          setFetchedMode(hypeMode);
+        }
       })
       .catch(() => {});
     return () => { alive = false; };
@@ -56,7 +93,7 @@ function HypeCarousel() {
   }, [items, paused]);
 
   const mode = HYPE_MODES.find((m) => m.id === hypeMode) ?? HYPE_MODES[0];
-  const w = items?.[idx];
+  const w = items && fetchedMode === hypeMode ? items[idx] : undefined;
 
   return (
     <section
@@ -102,7 +139,7 @@ function HypeCarousel() {
 
         {w ? (
           <div className="fade-up flex items-center gap-4 sm:gap-6" key={w.id}>
-            <button onClick={() => openWorkRef.current(w.id)} className="hidden w-36 shrink-0 overflow-hidden rounded-2xl shadow-2xl transition hover:scale-[1.03] sm:block md:w-44">
+            <button onClick={() => openWork(w.id)} className="hidden w-36 shrink-0 overflow-hidden rounded-2xl shadow-2xl transition hover:scale-[1.03] sm:block md:w-44">
               <img
                 src={`/api/img?u=${encodeURIComponent(w.cover)}`}
                 alt={`Capa de ${w.title}`}
@@ -122,7 +159,7 @@ function HypeCarousel() {
                   <span key={g} className="rounded-md bg-white/10 px-2 py-1 backdrop-blur">{g}</span>
                 ))}
                 <button
-                  onClick={() => openWorkRef.current(w.id)}
+                  onClick={() => openWork(w.id)}
                   className="bg-brand-gradient ml-auto hidden rounded-xl px-4 py-2 text-sm font-bold text-white shadow-lg transition hover:brightness-110 sm:block"
                 >
                   Ver obra
@@ -203,15 +240,111 @@ function NewsTeaser({ news }: { news: NewsItem[] }) {
   );
 }
 
+/** Capítulos da semana — grade compacta por dia (estimativa semanal de séries ativas) */
+function ChapterWeekStrip({ releases }: { releases: ChapterRelease[] }) {
+  const openWork = usePortal((s) => s.openWork);
+  const go = usePortal((s) => s.go);
+  const today = new Date().getDay();
+  const WD = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+  const byDay: ChapterRelease[][] = Array.from({ length: 7 }, () => []);
+  for (const r of releases) {
+    const d = new Date(r.dateISO + "T12:00:00").getDay();
+    byDay[d].push(r);
+  }
+  if (!releases.length) return null;
+  return (
+    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
+      {byDay.map((items, day) => (
+        <div key={day} className={`rounded-2xl border p-2.5 ${day === today ? "border-primary/50 bg-primary/5" : "border-border bg-card"}`}>
+          <p className={`mb-2 flex items-center justify-between text-[10px] font-black uppercase tracking-wider ${day === today ? "text-primary" : "text-muted-foreground"}`}>
+            {WD[day]}
+            {day === today && <span className="rounded bg-primary px-1 py-px text-[8px] text-white">hoje</span>}
+          </p>
+          <div className="flex flex-col gap-1">
+            {items.length === 0 && <p className="py-1.5 text-[10px] text-muted-foreground">—</p>}
+            {items.slice(0, 4).map((r) => (
+              <button key={r.work.id} onClick={() => openWork(r.work.id)} className="flex items-center gap-1.5 rounded-lg bg-secondary/70 px-1.5 py-1.5 text-left transition hover:bg-accent">
+                <div className="h-9 w-7 shrink-0 overflow-hidden rounded" style={{ background: r.work.coverColor ? `${r.work.coverColor}33` : "var(--muted)", minWidth: "1.75rem" }}>
+                  {r.work.cover && (
+                    <img src={`/api/img?u=${encodeURIComponent(r.work.cover)}`} alt="" loading="lazy" referrerPolicy="no-referrer" className="h-full w-full object-cover" />
+                  )}
+                </div>
+                <div className="min-w-0">
+                  <p className="truncate text-[10px] font-bold leading-tight">{r.work.title}</p>
+                  <p className="flex items-center gap-0.5 text-[9px] font-bold text-primary">
+                    <Check className="h-2 w-2" /> {r.nextChapter ? `cap ${r.nextChapter}` : "novo cap"}{r.stale ? " (ritmo estimado)" : ""}
+                  </p>
+                </div>
+              </button>
+            ))}
+            {items.length > 4 && (
+              <button onClick={() => go("calendar")} className="pt-0.5 text-[9px] font-bold text-primary hover:underline">
+                +{items.length - 4} neste dia
+              </button>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Linha de revistas — cards com faixa de capas reais */
+function MagazineRow({ magazines }: { magazines: MagEntry[] }) {
+  const openExplore = usePortal((s) => s.openExplore);
+  const go = usePortal((s) => s.go);
+  if (!magazines.length) return null;
+  return (
+    <div className="no-scrollbar flex gap-3 overflow-x-auto pb-2">
+      {magazines.slice(0, 14).map((m) => (
+        <button
+          key={m.name}
+          onClick={() => openExplore({ mag: m.name, q: "" })}
+          className="group w-56 shrink-0 rounded-2xl border border-border bg-card p-3 text-left transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-lg"
+          title={`${m.name} · ${m.count} obras`}
+        >
+          <div className="flex items-center justify-between gap-2">
+            <p className="truncate text-xs font-black">{m.name}</p>
+            <span className="shrink-0 rounded bg-primary/10 px-1.5 py-0.5 text-[9px] font-black text-primary">{m.count}</span>
+          </div>
+          <p className="mt-0.5 truncate text-[10px] text-muted-foreground">{m.publisher ?? "revista"}{m.schedule ? ` · ${m.schedule}` : ""}</p>
+          <div className="mt-2 flex">
+            {m.covers.slice(0, 3).map((c, i) => (
+              <div
+                key={c.id}
+                className="h-16 w-11 overflow-hidden rounded-md border border-border"
+                style={{ background: c.coverColor ? `${c.coverColor}33` : "var(--muted)", marginLeft: i > 0 ? "-14px" : undefined, zIndex: 10 - i, position: "relative" }}
+              >
+                <img src={`/api/img?u=${encodeURIComponent(c.cover)}`} alt={c.title} loading="lazy" referrerPolicy="no-referrer" className="h-full w-full object-cover" />
+              </div>
+            ))}
+          </div>
+          <span className="mt-2 flex items-center gap-0.5 text-[10px] font-bold text-primary">ver obras <ChevronRight className="h-3 w-3 transition group-hover:translate-x-0.5" /></span>
+        </button>
+      ))}
+      <button
+        onClick={() => go("magazines")}
+        className="flex w-36 shrink-0 flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-border bg-card/50 text-sm font-bold text-muted-foreground transition hover:border-primary/40 hover:text-primary"
+      >
+        <BookMarked className="h-5 w-5" /> ver todas as revistas
+      </button>
+    </div>
+  );
+}
+
 export function HomeView() {
   const [data, setData] = useState<{
-    launches: WorkData[]; hits: WorkData[]; bestsellers: WorkData[]; masterpieces: WorkData[];
-    ecchiHits: WorkData[]; manhwaHits: WorkData[]; animePicks: WorkData[]; dramaPicks: WorkData[];
+    launches: WorkData[]; newMangas: WorkData[]; hits: WorkData[]; bestsellers: WorkData[]; masterpieces: WorkData[];
+    ecchiHits: WorkData[]; manhwaHits: WorkData[]; animePicks: WorkData[];
     monthLaunches: WorkData[]; news: NewsItem[]; counts: { total: number };
+    chapterReleases: ChapterRelease[];
   } | null>(null);
+  const [sales, setSales] = useState<{ volumes: SaleItem[]; series: SaleItem[] } | null>(null);
+  const [mags, setMags] = useState<{ magazines: MagEntry[] } | null>(null);
   const [loading, setLoading] = useState(true);
   const openExplore = usePortal((s) => s.openExplore);
   const go = usePortal((s) => s.go);
+  const openWork = usePortal((s) => s.openWork);
   const user = usePortal((s) => s.user);
 
   useEffect(() => {
@@ -222,6 +355,8 @@ export function HomeView() {
       })
       .catch(() => {})
       .finally(() => setLoading(false));
+    fetch("/api/sales").then((r) => r.json()).then((d) => (d.ok ? setSales(d) : null)).catch(() => {});
+    fetch("/api/magazines").then((r) => r.json()).then((d) => (d.ok ? setMags(d) : null)).catch(() => {});
   }, []);
 
   const catChips = [
@@ -230,7 +365,6 @@ export function HomeView() {
     { label: "Manhuas", type: "manhua", emoji: "🇨🇳" },
     { label: "Light Novels", type: "lightnovel", emoji: "📚" },
     { label: "Animes", type: "anime", emoji: "🎬" },
-    { label: "Dramas", type: "drama", emoji: "📺" },
     { label: "Ecchi", type: "all", classification: "suggestive", emoji: "🔥" },
   ];
 
@@ -274,6 +408,94 @@ export function HomeView() {
             <CardRow items={data.launches} />
           </section>
 
+          {data.newMangas?.length > 0 && (
+            <section className="cv-auto">
+              <SectionHeader icon={<Sparkles className="h-4 w-4" />} title="Mangás Novos — Acabaram de Chegar" sub="Começaram a publicar agora: seja o primeiro a acompanhar desde o capítulo 1" action={
+                <button onClick={() => openExplore({ sort: "new", type: "manga", q: "" })} className="flex items-center gap-1 text-xs font-bold text-primary hover:underline">ver todos <ChevronRight className="h-3.5 w-3.5" /></button>
+              } />
+              <CardRow items={data.newMangas} />
+            </section>
+          )}
+
+          {data.chapterReleases?.length > 0 && (
+            <section className="cv-auto">
+              <SectionHeader icon={<Clock className="h-4 w-4" />} title="Lançamentos de Capítulos" sub="Próximos capítulos das séries que você acompanha — estimativa semanal das séries ativas" action={
+                <button onClick={() => go("calendar")} className="flex items-center gap-1 text-xs font-bold text-primary hover:underline">calendário completo <ChevronRight className="h-3.5 w-3.5" /></button>
+              } />
+              <ChapterWeekStrip releases={data.chapterReleases} />
+            </section>
+          )}
+
+          {sales && sales.volumes.length > 0 && (
+            <section className="cv-auto">
+              <SectionHeader icon={<Layers className="h-4 w-4" />} title="Vendas: Volumes Mais Vendidos" sub="Rankings reais da Oricon — os volumes individuais campeões de cada ano" action={
+                <button onClick={() => go("sales")} className="flex items-center gap-1 text-xs font-bold text-primary hover:underline">ranking completo <ChevronRight className="h-3.5 w-3.5" /></button>
+              } />
+              <div className="no-scrollbar flex snap-x gap-3 overflow-x-auto px-1 pb-2">
+                {sales.volumes.slice(0, 14).map((v, i) => {
+                  return (
+                    <button
+                      key={`${v.series}-${v.volume}-${v.year}`}
+                      onClick={() => openWork(v.workId)}
+                      className="cv-auto group relative w-[150px] shrink-0 snap-start overflow-hidden rounded-2xl border border-border bg-card text-left transition-all duration-300 hover:-translate-y-1 hover:shadow-xl sm:w-[168px]"
+                    >
+                      <div className="relative aspect-[2/3] w-full overflow-hidden" style={{ background: v.coverColor ? `${v.coverColor}22` : "var(--muted)" }}>
+                        <img
+                          src={`/api/img?u=${encodeURIComponent(v.cover)}`}
+                          alt={`Capa de ${v.title}`}
+                          loading="lazy"
+                          decoding="async"
+                          referrerPolicy="no-referrer"
+                          className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.06]"
+                        />
+                        <span className="absolute left-2 top-2 flex h-7 w-7 items-center justify-center rounded-lg bg-black/70 text-xs font-black text-white backdrop-blur">{i + 1}</span>
+                        <div className="absolute inset-x-0 bottom-0 flex bg-gradient-to-t from-black/85 via-black/45 to-transparent p-2 pt-6">
+                          <span className="bg-brand-gradient rounded-md px-1.5 py-0.5 text-[9px] font-black uppercase text-white">Vol. {v.volume}</span>
+                        </div>
+                      </div>
+                      <div className="p-2.5">
+                        <p className="line-clamp-2 min-h-[2.4rem] text-[13px] font-bold leading-snug">{v.title}</p>
+                        <p className="mt-1 text-[10px] font-bold text-primary">{fmtCopies(v.copies)} cópias · {v.year}</p>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+          )}
+
+          {sales && sales.series.length > 0 && (
+            <section className="cv-auto">
+              <SectionHeader icon={<TrendingUp className="h-4 w-4" />} title="Séries Mais Vendidas do Ano" sub="O que o Japão inteiro comprou — por ano, direto dos relatórios públicos da Oricon" action={
+                <button onClick={() => go("sales")} className="flex items-center gap-1 text-xs font-bold text-primary hover:underline">ver por ano <ChevronRight className="h-3.5 w-3.5" /></button>
+              } />
+              <div className="overflow-hidden rounded-2xl border border-border bg-card">
+                {sales.series.slice(0, 8).map((s, i) => (
+                  <button key={`${s.series}-${s.year}`} onClick={() => openWork(s.workId)} className="group flex w-full items-center gap-3 border-b border-border p-2.5 text-left transition last:border-b-0 hover:bg-accent/60">
+                    <span className={`flex h-7 w-8 shrink-0 items-center justify-center rounded-lg text-xs font-black ${i === 0 ? "bg-amber-400 text-black" : i === 1 ? "bg-slate-300 text-black" : i === 2 ? "bg-orange-700 text-white" : "bg-secondary text-muted-foreground"}`}>{i + 1}</span>
+                    <div className="h-12 w-9 shrink-0 overflow-hidden rounded-md" style={{ background: s.coverColor ? `${s.coverColor}33` : "var(--muted)" }}>
+                      <img src={`/api/img?u=${encodeURIComponent(s.cover)}`} alt="" loading="lazy" referrerPolicy="no-referrer" className="h-full w-full object-cover" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[13px] font-bold">{s.title}</p>
+                      <p className="text-[10px] text-muted-foreground">{fmtCopies(s.copies)} de cópias em {s.year}</p>
+                    </div>
+                    <BookOpen className="h-3.5 w-3.5 shrink-0 text-muted-foreground opacity-0 transition group-hover:opacity-100" />
+                  </button>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {mags && mags.magazines?.length > 0 && (
+            <section className="cv-auto">
+              <SectionHeader icon={<BookMarked className="h-4 w-4" />} title="Revistas & Editoras" sub="Onde cada obra é publicada de verdade — Weekly Shōnen Jump, Young Animal e mais" action={
+                <button onClick={() => go("magazines")} className="flex items-center gap-1 text-xs font-bold text-primary hover:underline">todas as revistas <ChevronRight className="h-3.5 w-3.5" /></button>
+              } />
+              <MagazineRow magazines={mags.magazines} />
+            </section>
+          )}
+
           <section className="cv-auto">
             <SectionHeader icon={<Flame className="h-4 w-4" />} title="Bombando: Novos Hits" sub="Em andamento, poucos capítulos publicados e já febre entre os leitores" action={
               <button onClick={() => openExplore({ sort: "new", status: "RELEASING", q: "" })} className="flex items-center gap-1 text-xs font-bold text-primary hover:underline">explorar <ChevronRight className="h-3.5 w-3.5" /></button>
@@ -282,7 +504,7 @@ export function HomeView() {
           </section>
 
           <section className="cv-auto">
-            <SectionHeader icon={<Trophy className="h-4 w-4" />} title="Top Popularidade (proxy de vendas)" sub="As obras mais favoritadas — o mais perto de um ranking de vendas global" action={
+            <SectionHeader icon={<Trophy className="h-4 w-4" />} title="Top Popularidade" sub="As obras mais favoritadas de todos os tempos" action={
               <button onClick={() => openExplore({ sort: "favorites", q: "" })} className="flex items-center gap-1 text-xs font-bold text-primary hover:underline">ranking completo <ChevronRight className="h-3.5 w-3.5" /></button>
             } />
             <CardRow items={data.bestsellers} ranks />
@@ -321,15 +543,6 @@ export function HomeView() {
                 <button onClick={() => openExplore({ type: "anime", q: "" })} className="flex items-center gap-1 text-xs font-bold text-primary hover:underline">todos <ChevronRight className="h-3.5 w-3.5" /></button>
               } />
               <CardRow items={data.animePicks} />
-            </section>
-          )}
-
-          {data.dramaPicks?.length > 0 && (
-            <section className="cv-auto">
-              <SectionHeader icon={<Star className="h-4 w-4" />} title="Dramas em Destaque" sub="K-dramas, C-dramas, J-dramas e tailandeses imperdíveis" action={
-                <button onClick={() => openExplore({ type: "drama", q: "" })} className="flex items-center gap-1 text-xs font-bold text-primary hover:underline">todos <ChevronRight className="h-3.5 w-3.5" /></button>
-              } />
-              <CardRow items={data.dramaPicks} />
             </section>
           )}
 

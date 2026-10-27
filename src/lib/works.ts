@@ -20,15 +20,18 @@ async function buildCache(): Promise<Cache> {
   return { works, builtAt: Date.now(), maxUpdatedAt };
 }
 
-/** Pool completo de obras — exclui SEMPRE conteúdo adulto do pool público.
- *  Conteúdo adulto só entra no pool quando `adult=true` (usuário com modo +18 ativo e rota da zona adulta). */
+/** Pool completo de obras — exclui SEMPRE conteúdo adulto e dramas do pool público.
+ *  Conteúdo adulto só entra no pool quando `adult=true` (usuário com modo +18 ativo e rota da zona adulta).
+ *  Dramas saíram do catálogo a pedido do usuário: seguem no banco como dados inativos
+ *  (links antigos respondem "não encontrada" no pool público). */
 export async function getAllWorks(adult = false): Promise<WorkData[]> {
   let cache = g.__ovCache;
   if (!cache || Date.now() - cache.builtAt > TTL) {
     cache = await buildCache();
     g.__ovCache = cache;
   }
-  return adult ? cache.works : cache.works.filter((w) => w.classification !== "adult");
+  if (adult) return cache.works;
+  return cache.works.filter((w) => w.classification !== "adult" && w.type !== "drama");
 }
 
 /** Invalida o cache após seeds/cron */
@@ -207,4 +210,57 @@ export async function getFacets(adult = false) {
 export async function catalogForAI(adult = false): Promise<WorkData[]> {
   const all = await getAllWorks(adult);
   return all;
+}
+
+// ---------- Lançamentos de capítulos (ritmo semanal estimado) ----------
+export interface ChapterEstimate {
+  work: WorkData;
+  nextChapter: number | null; // null = AniList não contabiliza (mostra "novo capítulo")
+  dateISO: string;
+  weekday: string;
+  stale: boolean; // última atualização antiga → ritmo só estimado
+}
+
+const WD_PT = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
+
+const WD_SCHEDULE: [RegExp, number][] = [
+  [/domingo/i, 0], [/segunda/i, 1], [/ter[çc]a/i, 2], [/quarta/i, 3], [/quinta/i, 4], [/sexta/i, 5], [/s[áa]bado/i, 6],
+];
+
+/** Séries em lançamento (mangá/manhwa/manhua) com próximo capítulo estimado.
+ *  Dia da semana: usa o calendário real da revista quando conhecido (ex.: "Semanal (quinta)");
+ *  nas demais, distribuição estável e explícitamente rotulada como estimativa. */
+export function estimateChapterReleases(pool: WorkData[], limit = 48): ChapterEstimate[] {
+  const now = Date.now();
+  const picked = pool
+    .filter(
+      (w) =>
+        (w.type === "manga" || w.type === "manhwa" || w.type === "manhua") &&
+        w.status === "RELEASING" &&
+        !!w.lastUpdate &&
+        !!w.cover
+    )
+    .map((w) => ({ w, fresh: now - w.lastUpdate! * 1000 < 60 * 86400000 }))
+    .sort((a, b) => Number(b.fresh) - Number(a.fresh) || (b.w.popularity ?? 0) - (a.w.popularity ?? 0))
+    .slice(0, limit);
+
+  let rr = 0;
+  return picked.map(({ w }) => {
+    let day: number | null = null;
+    const sched = w.magazine?.schedule ?? "";
+    for (const [re, d] of WD_SCHEDULE) {
+      if (re.test(sched)) { day = d; break; }
+    }
+    if (day == null) day = rr++ % 7; // distribuição estável (estimativa rotulada)
+    const next = new Date(now);
+    const delta = (day - next.getDay() + 7) % 7;
+    next.setDate(next.getDate() + delta);
+    return {
+      work: w,
+      nextChapter: w.chapters != null && w.chapters > 0 ? w.chapters + 1 : null,
+      dateISO: next.toISOString().slice(0, 10),
+      weekday: WD_PT[next.getDay()],
+      stale: now - w.lastUpdate! * 1000 > 21 * 86400000,
+    };
+  });
 }

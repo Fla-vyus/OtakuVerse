@@ -1,0 +1,12 @@
+import Database from "better-sqlite3";
+const db = new Database("db/custom.db", { readonly: true });
+const q = (sql) => db.prepare(sql).get();
+console.log(q("SELECT COUNT(*) total FROM Work"));
+console.log(q("SELECT COUNT(*) spicy1 FROM Work WHERE spicy=1"));
+console.log(q("SELECT COUNT(*) spicy2 FROM Work WHERE spicy=2"));
+console.log(q("SELECT COUNT(*) doujin FROM Work WHERE format LIKE '%DOUJIN%'"));
+console.log(q("SELECT COUNT(*) users FROM User"));
+console.log(q("SELECT COUNT(*) shelf FROM ShelfEntry"));
+console.log(q("SELECT COUNT(*) lists FROM UserList"));
+console.log(q("SELECT format, COUNT(*) n FROM Work WHERE isAdult=1 GROUP BY format LIMIT 10"));
+console.log(q("SELECT cover, title FROM Work WHERE spicy=2 LIMIT 2"));

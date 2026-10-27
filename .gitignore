@@ -11,3 +11,16 @@ server.log
 worklogs
 db/custom.db
 upload
+.ov-secret
+db/custom.db-shm
+db/custom.db-wal
+db/imgcache/
+*.tsbuildinfo
+.seed-more-state.json
+*.log
+db/backup-corrupt/
+db/*.db*
+public/covers/
+.backfill-state.json
+.backfill.log
+tool-results/

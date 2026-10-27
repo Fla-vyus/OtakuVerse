@@ -1,0 +1,13 @@
+import { PrismaClient } from "@prisma/client";
+const db = new PrismaClient();
+const total = await db.work.count();
+const spicy1 = await db.work.count({ where: { spicy: 1 } });
+const spicy2 = await db.work.count({ where: { spicy: 2 } });
+const doujin = await db.work.count({ where: { format: { contains: "DOUJIN" } } });
+const users = await db.user.count();
+const shelf = await db.shelfEntry.count();
+const lists = await db.userList.count();
+console.log({ total, spicy1, spicy2, doujin, users, shelf, lists });
+const fmts = await db.work.groupBy({ by: ["format"], _count: { _all: true }, where: { isAdult: true } });
+console.log(fmts.map(f => `${f.format}: ${f._count._all}`).join(" | "));
+await db.$disconnect();

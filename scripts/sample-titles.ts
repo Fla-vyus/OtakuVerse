@@ -1,0 +1,13 @@
+import { PrismaClient } from "@prisma/client";
+const db = new PrismaClient();
+const rand = () => `RANDOM()`;
+const q = async (sql: string) => await db.$queryRawUnsafe<any[]>(sql);
+const r1 = await q(`SELECT title, type, spicy, avgScore FROM Work WHERE id LIKE 'g%' AND spicy=2 ORDER BY RANDOM() LIMIT 6`);
+const r2 = await q(`SELECT title, type, chapters FROM Work WHERE id LIKE 'g%' AND startDate >= '2026-08' ORDER BY RANDOM() LIMIT 10`);
+const r3 = await q(`SELECT title, type, spicy FROM Work WHERE id LIKE 'g%' AND spicy=1 ORDER BY RANDOM() LIMIT 6`);
+const r4 = await q(`SELECT COUNT(*) n, SUM(CASE WHEN chapters IS NULL THEN 1 ELSE 0 END) nulls FROM Work`);
+console.log("ADULT:", r1.map(x => `[${x.type}] ${x.title}`).join("\n"));
+console.log("\nRECENT:", r2.map(x => `[${x.type}] ${x.title} (${x.chapters ?? "?"} caps)`).join("\n"));
+console.log("\nECCHI:", r3.map(x => `[${x.type}] ${x.title}`).join("\n"));
+console.log("\nTOTAL:", r4[0]);
+await db.$disconnect();

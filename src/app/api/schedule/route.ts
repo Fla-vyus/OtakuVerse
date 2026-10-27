@@ -1,18 +1,30 @@
 // Calendário: animes em exibição agrupados por dia da semana (dados reais de
 // nextEpisodeAt) + capítulos estimados das séries ativas + grade do mês.
 import { NextRequest, NextResponse } from "next/server";
-import { getAllWorks, estimateChapterReleases } from "@/lib/works";
+import { getAllWorks, estimateChapterReleases, toCardWork } from "@/lib/works";
+import type { WorkData } from "@/lib/types";
+import { cachedJson } from "@/lib/httpCache";
 
 export const dynamic = "force-dynamic";
 
 interface ChapterSlot { workId: string; title: string; cover: string | null; coverColor: string | null; nextChapter: number | null; when: string; stale: boolean; }
+
+/** Episódio da grade semanal: só os campos que o CalendarView realmente usa
+ *  (antes ia o objeto completo — payload de 500KB para o mesmo visual). */
+function episodeSlot(w: WorkData) {
+  return {
+    id: w.id, title: w.title, cover: w.cover, coverColor: w.coverColor,
+    nextEpisodeAt: w.nextEpisodeAt, nextEpisodeNum: w.nextEpisodeNum,
+    extLinks: w.extLinks,
+  };
+}
 
 const g = globalThis as unknown as { __schedCache?: { at: number; data: any } };
 const TTL = 10 * 60_000;
 
 export async function GET(req: NextRequest) {
   if (g.__schedCache && Date.now() - g.__schedCache.at < TTL) {
-    return NextResponse.json({ ok: true, ...g.__schedCache.data, cached: true });
+    return cachedJson({ ok: true, ...g.__schedCache.data, cached: true });
   }
   const sp = req.nextUrl.searchParams;
   const month = sp.get("month") ?? new Date().toISOString().slice(0, 7);
@@ -24,10 +36,10 @@ export async function GET(req: NextRequest) {
     .filter((w) => w.type === "anime" && w.nextEpisodeAt && new Date(w.nextEpisodeAt).getTime() > now - 86400000)
     .filter((w) => new Date(w.nextEpisodeAt!).getTime() < now + 9 * 86400000);
 
-  const byWeekday: { day: number; items: typeof airing }[] = Array.from({ length: 7 }, (_, day) => ({ day, items: [] }));
+  const byWeekday: { day: number; items: ReturnType<typeof episodeSlot>[] }[] = Array.from({ length: 7 }, (_, day) => ({ day, items: [] }));
   for (const w of airing) {
     const d = new Date(w.nextEpisodeAt!);
-    byWeekday[d.getDay()].items.push(w);
+    byWeekday[d.getDay()].items.push(episodeSlot(w));
   }
   for (const d of byWeekday) d.items.sort((a, b) => (a.nextEpisodeAt ?? "").localeCompare(b.nextEpisodeAt ?? ""));
 
@@ -55,9 +67,10 @@ export async function GET(req: NextRequest) {
       return d === month && w.cover;
     })
     .sort((a, b) => (b.popularity ?? 0) - (a.popularity ?? 0))
-    .slice(0, 60);
+    .slice(0, 60)
+    .map(toCardWork);
 
   const data = { byWeekday, chaptersByWeekday, month, monthItems };
   g.__schedCache = { at: Date.now(), data };
-  return NextResponse.json({ ok: true, ...data });
+  return cachedJson({ ok: true, ...data });
 }

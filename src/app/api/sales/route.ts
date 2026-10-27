@@ -3,6 +3,7 @@
 import { NextResponse } from "next/server";
 import { getAllWorks } from "@/lib/works";
 import { SERIES_BY_YEAR, VOLUMES_BY_YEAR, ALL_TIME, matchWork, SALES_YEARS } from "@/lib/sales";
+import { cachedJson } from "@/lib/httpCache";
 
 export const dynamic = "force-dynamic";
 
@@ -11,7 +12,7 @@ const TTL = 10 * 60_000;
 
 export async function GET() {
   if (g.__salesCache && Date.now() - g.__salesCache.at < TTL) {
-    return NextResponse.json({ ok: true, ...g.__salesCache.data, cached: true });
+    return cachedJson({ ok: true, ...g.__salesCache.data, cached: true });
   }
   const pool = await getAllWorks();
 
@@ -45,5 +46,5 @@ export async function GET() {
     updatedAt: new Date().toISOString(),
   };
   g.__salesCache = { at: Date.now(), data };
-  return NextResponse.json({ ok: true, ...data });
+  return cachedJson({ ok: true, ...data });
 }

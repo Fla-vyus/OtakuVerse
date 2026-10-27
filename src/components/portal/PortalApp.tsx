@@ -7,7 +7,7 @@ import {
   TrendingUp, BookMarked,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { usePortal, bindHashSync, THEMES, type View } from "./store";
+import { usePortal, bindHashSync, bindPendingSyncRetry, THEMES, type View } from "./store";
 import { HomeView } from "./HomeView";
 import { ExploreView } from "./ExploreView";
 import { DetailView } from "./DetailView";
@@ -207,6 +207,7 @@ export function PortalApp() {
       if (Object.keys(lib).length) setLibrary(lib);
     } catch {}
     const unbind = bindHashSync();
+    const unbindRetry = bindPendingSyncRetry(); // push pendente sobe sozinho com rede de volta
     const parsed = (() => {
       const h = window.location.hash;
       if (h.startsWith("#/obra/")) return { view: "detail" as View, workId: h.slice(7).split(/[/?]/)[0] };
@@ -228,7 +229,7 @@ export function PortalApp() {
     fetch("/api/status").then((r) => r.json()).then((d) => {
       if (d.ok) setStatus({ total: d.total, lastRefreshAt: d.lastRefreshAt });
     }).catch(() => {});
-    return unbind;
+    return () => { unbind(); unbindRetry(); };
   }, []);
 
   return (

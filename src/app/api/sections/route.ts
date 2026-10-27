@@ -12,6 +12,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAllWorks, estimateChapterReleases, toCardWork } from "@/lib/works";
 import { buildNews } from "@/lib/news";
 import type { WorkData } from "@/lib/types";
+import { cachedJson } from "@/lib/httpCache";
 
 export const dynamic = "force-dynamic";
 
@@ -40,7 +41,7 @@ function emptyData(msg: string) {
 export async function GET(req: NextRequest) {
   const allowEmpty = req.nextUrl.searchParams.get("soft") === "1";
   if (g.__sectionsCache && Date.now() - g.__sectionsCache.at < TTL) {
-    return NextResponse.json({ ok: true, ...g.__sectionsCache.data, cached: true });
+    return cachedJson({ ok: true, ...g.__sectionsCache.data, cached: true });
   }
 
   let all: WorkData[];
@@ -48,7 +49,7 @@ export async function GET(req: NextRequest) {
     all = await getAllWorks();
   } catch {
     // banco ocupado/falhou → serve o último cache de seções válido (mesmo stale)
-    if (g.__sectionsCache?.data) return NextResponse.json({ ok: true, ...g.__sectionsCache.data, cached: true, stale: true });
+    if (g.__sectionsCache?.data) return cachedJson({ ok: true, ...g.__sectionsCache.data, cached: true, stale: true });
     // sem nada em memória: resposta soft para o cliente mostrar painel de erro com retry (200, nunca 500)
     return NextResponse.json(emptyData(allowEmpty ? "Catálogo aquecendo — tente novamente em instantes" : "Catálogo indisponível agora"), { status: 200 });
   }
@@ -151,10 +152,10 @@ export async function GET(req: NextRequest) {
       counts: { total: all.length },
     };
     g.__sectionsCache = { at: Date.now(), data };
-    return NextResponse.json({ ok: true, ...data });
+    return cachedJson({ ok: true, ...data });
   } catch (e: any) {
     // erro de processamento → stale se houver, senão soft-fail
-    if (g.__sectionsCache?.data) return NextResponse.json({ ok: true, ...g.__sectionsCache.data, cached: true, stale: true });
+    if (g.__sectionsCache?.data) return cachedJson({ ok: true, ...g.__sectionsCache.data, cached: true, stale: true });
     return NextResponse.json(emptyData(String(e?.message ?? "erro ao montar seções")), { status: 200 });
   }
 }

@@ -14,12 +14,28 @@ const g = globalThis as unknown as {
   __ovCacheBuilding?: Promise<Cache>; // single-flight: N requisições concorrentes = 1 rebuild
   __ovCacheStale?: Cache; // último cache válido — emergência quando o banco falha
 };
-const TTL = 300_000; // 5 min — pool de 24k obras é caro de remontar; invalidado por seeds/cron
+const TTL = 900_000; // 15 min — invalidação explícita por seeds/cron + SWR cobrem o meio-termo
+
+// Projeção do pool: campos pesados que SÓ o detalhe usa ficam de fora do rebuild
+// (sinopse ~70% do peso; siteUrl/network só aparecem no detalhe). banner/extLinks
+// ficam porque hero do hype e badges de streaming do calendário dependem deles.
+// O detalhe completo vem direto do banco por id (getWorkById) — sempre fresco.
+const POOL_SELECT = {
+  id: true, malId: true, type: true, format: true, title: true, titleEn: true,
+  titleNative: true, synonyms: true, cover: true, coverAlt: true, coverColor: true,
+  banner: true, status: true, chapters: true, volumes: true, episodes: true,
+  duration: true, startDate: true, endDate: true, country: true, isAdult: true,
+  classification: true, adultTags: true, genres: true, tags: true, avgScore: true,
+  popularity: true, favourites: true, authors: true, extLinks: true, magazine: true,
+  source: true, lastUpdate: true, nextEpisodeAt: true, nextEpisodeNum: true,
+  coverAlts: true, langs: true, ptTags: true, trending: true, trendingAt: true,
+  spicy: true, follows: true, createdAt: true,
+} as const;
 
 async function buildCache(): Promise<Cache> {
   const agg = await db.work.aggregate({ _max: { createdAt: true } });
   const maxUpdatedAt = agg._max.createdAt?.getTime() ?? 0;
-  const rows = await db.work.findMany();
+  const rows = await db.work.findMany({ select: POOL_SELECT });
   const works = rows.map(parseWork);
   return { works, builtAt: Date.now(), maxUpdatedAt };
 }
@@ -94,8 +110,14 @@ export function toCardWork(w: WorkData): WorkData {
 }
 
 export async function getWorkById(id: string, adult = false): Promise<WorkData | null> {
-  const pool = await getAllWorks(adult);
-  return pool.find((w) => w.id === id) ?? null;
+  // Detalhe completo direto do banco (1 linha indexada) — não depende do pool
+  // magro do cache e sempre traz synopsis/banner/siteUrl atualizados.
+  const row = await db.work.findUnique({ where: { id } });
+  if (!row) return null;
+  const work = parseWork(row);
+  // mesmo contrato do pool: sem adultMode não expõe adult; dramas saíram do catálogo
+  if (!adult && (work.classification === "adult" || work.type === "drama")) return null;
+  return work;
 }
 
 // ---------- Classificação ----------

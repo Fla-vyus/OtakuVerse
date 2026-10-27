@@ -8,14 +8,40 @@
  */
 import { PrismaClient } from "@prisma/client";
 import { existsSync, readFileSync, gunzipSync } from "node:fs";
+import { createHash } from "node:crypto";
 import path from "node:path";
 
 const db = new PrismaClient();
 const DATA_DIR = path.join(process.cwd(), "data");
 
+/** Valida o snapshot contra o manifest (sha256) antes de restaurar — um snapshot
+ *  corrompido NUNCA é restaurado por cima do banco. */
+function verifySnapshot(file: string): boolean {
+  const manifestPath = path.join(DATA_DIR, "manifest.json");
+  if (!existsSync(manifestPath)) return true; // sem manifest (snapshot antigo) — segue com aviso
+  try {
+    const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+    const expected =
+      file.endsWith("catalog-snapshot.jsonl.gz") ? manifest.catalog?.sha : manifest.accounts?.sha;
+    if (!expected) return true;
+    const actual = createHash("sha256").update(readFileSync(file)).digest("hex");
+    if (actual !== expected) {
+      console.error(`  ✗ CHECKSUM INVÁLIDO em ${path.basename(file)} (esperado ${expected.slice(0, 12)}…, recebido ${actual.slice(0, 12)}…)`);
+      return false;
+    }
+    return true;
+  } catch {
+    return true; // manifest ilegível não deve bloquear um resgate de emergência
+  }
+}
+
 function rowsFromSnapshot(): any[] {
   const file = path.join(DATA_DIR, "catalog-snapshot.jsonl.gz");
   if (!existsSync(file)) return [];
+  if (!verifySnapshot(file)) {
+    console.error("  ✗ snapshot de catálogo corrompido — restore cancelado (proteção ao banco)");
+    process.exit(1);
+  }
   const jsonl = gunzipSync(readFileSync(file)).toString("utf8");
   const rows: any[] = [];
   for (const line of jsonl.split("\n")) {
@@ -42,6 +68,7 @@ async function restoreCatalog(): Promise<number> {
 async function restoreAccounts(): Promise<string> {
   const file = path.join(DATA_DIR, "accounts-snapshot.json.gz");
   if (!existsSync(file)) return "sem snapshot de contas";
+  if (!verifySnapshot(file)) return "snapshot de contas corrompido — restauração pulada";
   const payload = JSON.parse(gunzipSync(readFileSync(file)).toString("utf8"));
   const users = payload.users ?? [];
   const haveUsers = await db.user.count();

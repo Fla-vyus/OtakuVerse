@@ -4,10 +4,21 @@ import { useEffect, useRef, useState } from "react";
 import {
   User, CloudCheck, CloudUpload, CloudDownload, Palette, ShieldAlert, ShieldOff,
   Loader2, Save, Lock, LogOut, FileDown, FileUp, Trash2, Eye, EyeOff, KeyRound, Laptop,
+  DatabaseBackup,
 } from "lucide-react";
 import { usePortal, THEMES, LIB_STATUS_LABEL } from "./store";
 
 interface SessionInfo { id: string; createdAt: string; expiresAt: string; ua?: string | null }
+
+interface DataHealth {
+  total: number | null;
+  users?: number;
+  backup?: { count: number; lastAt: string | null };
+  snapshot?: { at: string | null; verified: boolean };
+  dbSizeMB?: number | null;
+  lastSync?: string | null;
+  lastRefreshAt?: string | null;
+}
 
 function Section({ icon, title, sub, children }: { icon: React.ReactNode; title: string; sub: string; children: React.ReactNode }) {
   return (
@@ -46,6 +57,12 @@ export function ProfileView() {
   const [savedMsg, setSavedMsg] = useState<string | null>(null);
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [health, setHealth] = useState<DataHealth | null>(null);
+
+  // saúde dos dados (backups + snapshots git-safe) — visível para você conferir que nada se perde
+  useEffect(() => {
+    fetch("/api/status").then((r) => r.json()).then((d) => { if (d.ok) setHealth(d); }).catch(() => {});
+  }, []);
 
   // estado do modo +18 (portão escondido)
   const [adultMode, setAdultMode] = useState(false);
@@ -272,6 +289,40 @@ export function ProfileView() {
             )}
           </div>
           {savedMsg && <p className="mt-2 rounded-lg bg-emerald-500/10 px-3 py-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-300">{savedMsg}</p>}
+        </Section>
+
+        {/* PROTEÇÃO DOS DADOS (durabilidade) */}
+        <Section icon={<DatabaseBackup className="h-4 w-4" />} title="Proteção dos dados" sub="Camadas automáticas para nada do catálogo e da sua conta se perder">
+          {!health ? (
+            <p className="flex items-center gap-2 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" /> conferindo cofres…</p>
+          ) : (
+            <>
+              <div className="mb-3 grid grid-cols-2 gap-2 text-center sm:grid-cols-4">
+                <div className="rounded-xl bg-secondary px-2 py-3">
+                  <p className="text-lg font-black">{health.total != null ? health.total.toLocaleString("pt-BR") : "—"}</p>
+                  <p className="text-[10px] font-bold text-muted-foreground">obras no catálogo</p>
+                </div>
+                <div className="rounded-xl bg-secondary px-2 py-3">
+                  <p className={`text-lg font-black ${(health.backup?.count ?? 0) > 0 ? "text-emerald-500" : "text-destructive"}`}>{health.backup?.count ?? 0}</p>
+                  <p className="text-[10px] font-bold text-muted-foreground">backups SQLite</p>
+                </div>
+                <div className="rounded-xl bg-secondary px-2 py-3">
+                  <p className={`text-lg font-black ${health.snapshot?.verified ? "text-emerald-500" : "text-destructive"}`}>{health.snapshot?.verified ? "✓" : "!"}</p>
+                  <p className="text-[10px] font-bold text-muted-foreground">snapshot verificado (sha256)</p>
+                </div>
+                <div className="rounded-xl bg-secondary px-2 py-3">
+                  <p className="text-lg font-black">{health.dbSizeMB != null ? `${health.dbSizeMB} MB` : "—"}</p>
+                  <p className="text-[10px] font-bold text-muted-foreground">tamanho do banco</p>
+                </div>
+              </div>
+              <ul className="space-y-1.5 text-[11px] leading-relaxed text-muted-foreground">
+                <li>• <b className="text-foreground">Backup diário:</b> cópia consistente do SQLite com checagem de integridade e rotação — {(health.backup?.lastAt) ? `último ${new Date(health.backup.lastAt).toLocaleString("pt-BR")}` : "ainda não rodou neste boot"}.</li>
+                <li>• <b className="text-foreground">Snapshot git-safe a cada 6h:</b> catálogo + contas exportados com checksum para o repositório — {health.snapshot?.at ? `último ${new Date(health.snapshot.at).toLocaleString("pt-BR")}` : "pendente"}.</li>
+                <li>• <b className="text-foreground">Auto-restore:</b> se o ambiente perder o banco, o catálogo volta sozinho do snapshot no boot.</li>
+                <li>• <b className="text-foreground">Sua biblioteca:</b> salva local na hora e enviada à nuvem com 3 tentativas automáticas; se a rede cair, sobe sozinha ao reconectar.</li>
+              </ul>
+            </>
+          )}
         </Section>
 
         {/* APARÊNCIA */}

@@ -3,6 +3,7 @@
 import { NextResponse } from "next/server";
 import { getAllWorks } from "@/lib/works";
 import { MAGAZINES, type Magazine } from "@/lib/magazines";
+import { cachedJson } from "@/lib/httpCache";
 
 export const dynamic = "force-dynamic";
 
@@ -11,7 +12,7 @@ const TTL = 10 * 60_000;
 
 export async function GET() {
   if (g.__magsCache && Date.now() - g.__magsCache.at < TTL) {
-    return NextResponse.json({ ok: true, ...g.__magsCache.data, cached: true });
+    return cachedJson({ ok: true, ...g.__magsCache.data, cached: true });
   }
   const all = await getAllWorks();
 
@@ -56,5 +57,5 @@ export async function GET() {
     genericWorks,
   };
   g.__magsCache = { at: Date.now(), data };
-  return NextResponse.json({ ok: true, ...data });
+  return cachedJson({ ok: true, ...data });
 }

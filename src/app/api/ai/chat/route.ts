@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import ZAI from "z-ai-web-dev-sdk";
 import { getAllWorks } from "@/lib/works";
+import { db } from "@/lib/db";
 import type { WorkData } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -121,7 +122,14 @@ export async function POST(req: NextRequest) {
 
     const all = await getAllWorks(false); // IA do catálogo principal — nunca mistura adulto
     const candidates = scoreCandidates(last, all);
-    const catalog = compactCatalog(candidates);
+    // enriquece os 42 candidatos com a sinopse real (1 query indexada — o pool
+    // magro do cache não carrega synopsis; a Aoi continua recomendando com contexto)
+    const synoRows = await db.work.findMany({
+      where: { id: { in: candidates.map((c) => c.id) } },
+      select: { id: true, synopsis: true },
+    }).catch(() => [] as { id: string; synopsis: string | null }[]);
+    const synoMap = new Map(synoRows.map((r) => [r.id, r.synopsis]));
+    const catalog = compactCatalog(candidates.map((c) => ({ ...c, synopsis: synoMap.get(c.id) ?? null })));
 
     // sessão: identifica usuário para a Aoi saber o nome e o modo +18
     const { getSessionUser } = await import("@/lib/auth");

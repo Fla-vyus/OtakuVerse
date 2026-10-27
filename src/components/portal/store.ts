@@ -102,6 +102,26 @@ interface PortalState {
 const LS_THEME = "ov_theme";
 const LS_LIB = "ov_library_v2";
 const LS_HYPE = "ov_hype_mode";
+const LS_PENDING_PUSH = "ov_pending_push";
+
+// Guarda global anti-corrida: dois upserts no mesmo tick NÃO geram dois pushes
+const gStore = globalThis as unknown as { __ovPushInFlight?: Promise<void> };
+
+/** Marca que há mudanças locais esperando sync (sobrevive a F5 e a quedas de rede). */
+function markPendingPush() {
+  if (typeof window !== "undefined") {
+    try { localStorage.setItem(LS_PENDING_PUSH, String(Date.now())); } catch {}
+  }
+}
+function clearPendingPush() {
+  if (typeof window !== "undefined") {
+    try { localStorage.removeItem(LS_PENDING_PUSH); } catch {}
+  }
+}
+function hasPendingPush(): boolean {
+  if (typeof window === "undefined") return false;
+  try { return !!localStorage.getItem(LS_PENDING_PUSH); } catch { return false; }
+}
 
 function readLocalLib(): Record<string, LibraryEntry> {
   if (typeof window === "undefined") return {};
@@ -251,6 +271,7 @@ export const usePortal = create<PortalState>((set, get) => ({
     const lib = { ...get().library, [e.workId]: e };
     set({ library: lib });
     writeLocalLib(lib);
+    markPendingPush(); // pendência primeiro: fechar a aba no meio nunca perde a mudança
     get().syncCloud("push");
   },
   removeLocal: (workId) => {
@@ -259,7 +280,9 @@ export const usePortal = create<PortalState>((set, get) => ({
     set({ library: lib });
     writeLocalLib(lib);
     if (get().user) {
+      markPendingPush(); // o push completo cobre a remoção caso o DELETE falhe
       fetch(`/api/library?workId=${encodeURIComponent(workId)}`, { method: "DELETE" }).catch(() => {});
+      get().syncCloud("push");
     }
   },
   setSync: (s, at) => set({ syncState: s, ...(at ? { lastSync: at } : {}) }),
@@ -291,41 +314,81 @@ export const usePortal = create<PortalState>((set, get) => ({
 
   async syncCloud(direction) {
     if (!get().user) return;
+    if (direction === "push") {
+      // single-flight: se já há um push em andamento, ele já leva o estado mais recente
+      if (gStore.__ovPushInFlight) return gStore.__ovPushInFlight;
+      const run = (async () => {
+        set({ syncState: "syncing" });
+        const items = Object.values(get().library);
+        if (!items.length) { clearPendingPush(); set({ syncState: "ok" }); return; }
+        // 3 tentativas com backoff — queda momentânea de rede nunca perde a mudança
+        const delays = [0, 2000, 6000];
+        for (let attempt = 0; attempt < delays.length; attempt++) {
+          if (delays[attempt]) await new Promise((r) => setTimeout(r, delays[attempt]));
+          try {
+            const r = await fetch("/api/library", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ items }),
+            });
+            if (r.ok) {
+              clearPendingPush();
+              set({ syncState: "ok", lastSync: new Date().toISOString() });
+              return;
+            }
+            // 401/403: sem sessão válida — retry não resolve; espera o usuário logar de novo
+            if (r.status === 401 || r.status === 403) { set({ syncState: "error" }); return; }
+          } catch {}
+        }
+        // falhou de verdade: marca pendência (retry no online/reload/próxima ação)
+        markPendingPush();
+        set({ syncState: "error" });
+      })().finally(() => { gStore.__ovPushInFlight = undefined; });
+      gStore.__ovPushInFlight = run;
+      return run;
+    }
     set({ syncState: "syncing" });
     try {
-      if (direction === "push") {
-        const lib = get().library;
-        const items = Object.values(lib);
-        if (items.length) {
-          await fetch("/api/library", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ items }),
-          });
+      const r = await fetch("/api/library");
+      const d = await r.json();
+      if (d.ok) {
+        const local = readLocalLib();
+        const merged: Record<string, LibraryEntry> = { ...local };
+        for (const it of d.items as LibraryEntry[]) {
+          const l = local[it.workId];
+          // last-write-wins
+          if (!l || new Date(it.updatedAt) > new Date(l.updatedAt)) merged[it.workId] = it;
         }
-        set({ syncState: "ok", lastSync: new Date().toISOString() });
+        get().setLibrary(merged);
+        set({ syncState: "ok", lastSync: d.syncedAt ?? new Date().toISOString() });
+        // havia push pendente? sobe agora que a sessão respondeu
+        if (hasPendingPush()) get().syncCloud("push");
       } else {
-        const r = await fetch("/api/library");
-        const d = await r.json();
-        if (d.ok) {
-          const local = readLocalLib();
-          const merged: Record<string, LibraryEntry> = { ...local };
-          for (const it of d.items as LibraryEntry[]) {
-            const l = local[it.workId];
-            // last-write-wins
-            if (!l || new Date(it.updatedAt) > new Date(l.updatedAt)) merged[it.workId] = it;
-          }
-          get().setLibrary(merged);
-          set({ syncState: "ok", lastSync: d.syncedAt ?? new Date().toISOString() });
-        } else {
-          set({ syncState: "error" });
-        }
+        set({ syncState: "error" });
       }
     } catch {
       set({ syncState: "error" });
     }
   },
 }));
+
+/** Repetidor de pendências: com rede de volta ou a cada 90s, tenta subir o que ficou para trás.
+ *  Garantia de "nada se perde" no cliente — a mudança fica no localStorage até o servidor confirmar. */
+export function bindPendingSyncRetry() {
+  if (typeof window === "undefined") return () => {};
+  const retry = () => {
+    const st = usePortal.getState();
+    if (st.user && hasPendingPush() && !gStore.__ovPushInFlight) st.syncCloud("push");
+  };
+  window.addEventListener("online", retry);
+  window.addEventListener("focus", retry);
+  const iv = setInterval(retry, 90_000);
+  return () => {
+    window.removeEventListener("online", retry);
+    window.removeEventListener("focus", retry);
+    clearInterval(iv);
+  };
+}
 
 /** Sincroniza navegação com botões voltar/avançar */
 export function bindHashSync() {

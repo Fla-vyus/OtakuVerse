@@ -28,6 +28,22 @@ async function main() {
   const size = statSync(target).size;
   console.log(`backup ok: ${target} (${(size / 1024 / 1024).toFixed(1)} MB)`);
 
+  // verificação: o arquivo de backup TEM que passar no integrity_check — um backup
+  // corrompido não é backup. Se falhar, é removido para não poluir a rotação.
+  const checkDb = new PrismaClient({ datasources: { db: { url: `file:${target}` } } });
+  try {
+    const r: any = await checkDb.$queryRawUnsafe("PRAGMA integrity_check;");
+    const result = Array.isArray(r) ? (r[0]?.integrity_check ?? "unknown") : "unknown";
+    if (result !== "ok") {
+      console.error(`backup CORROMPIDO (integrity: ${result}) — removendo…`);
+      unlinkSync(target);
+    } else {
+      console.log("integrity_check do backup: ok");
+    }
+  } finally {
+    await checkDb.$disconnect().catch(() => {});
+  }
+
   // rotação: mantém os KEEP mais recentes
   const files = readdirSync(dir)
     .filter((f) => f.endsWith(".db"))

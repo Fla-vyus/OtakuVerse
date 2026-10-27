@@ -45,21 +45,24 @@ export async function buildNews(pool: WorkData[]): Promise<NewsItem[]> {
     }
   } catch {}
 
-  // 2) Estreias recentes no catálogo (dados reais de data)
+  // 2) Estreias recentes no catálogo (dados reais de data) — separa lançadas de previstas
   const debuts = [...pool]
-    .filter((w) => w.startDate && w.startDate >= new Date(now - 45 * 86400000).toISOString().slice(0, 10) && w.cover)
+    .filter((w) => w.startDate && w.startDate >= new Date(now - 60 * 86400000).toISOString().slice(0, 10) && w.cover && (w.popularity ?? 0) >= 5000)
     .sort((a, b) => (b.popularity ?? 0) - (a.popularity ?? 0))
     .slice(0, 4);
   for (const w of debuts) {
+    const isFuture = (w.startDate ?? "") > new Date(now).toISOString().slice(0, 10);
     items.push({
       id: `estreia-${w.id}`,
       kind: "estreia",
-      title: `${w.title} estreia`,
-      summary: `Nova produção disponível desde ${fmtDate(w.startDate)}${w.episodes ? ` com ${w.episodes} episódios previstos` : ""}. Nota média ${w.avgScore ?? "?"}%.`,
+      title: isFuture ? `${w.title}: estreia marcada` : `${w.title} estreia`,
+      summary: isFuture
+        ? `Nova produção confirmada para ${fmtDate(w.startDate)}${w.episodes ? ` com ${w.episodes} episódios previstos` : ""}. Já pode favoritar!`
+        : `Disponível desde ${fmtDate(w.startDate)}${w.episodes ? ` com ${w.episodes} episódios previstos` : ""}. Nota média ${w.avgScore ?? "?"}%.`,
       image: w.banner ?? w.cover,
-      date: (w.startDate ?? new Date().toISOString()).length === 10 ? w.startDate + "T12:00:00Z" : w.startDate!,
+      date: isFuture ? new Date(now).toISOString() : (w.startDate!.length === 10 ? w.startDate + "T12:00:00Z" : w.startDate!),
       workId: w.id,
-      badge: "Estreia",
+      badge: isFuture ? "Chega em" : "Estreia",
     });
   }
 

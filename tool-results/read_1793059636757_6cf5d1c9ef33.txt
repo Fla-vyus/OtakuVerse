@@ -1,0 +1,469 @@
+    40→    40→    <span className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold ${style}`}>
+    41→    41→      <Languages className="h-3.5 w-3.5" /> {l.label} · <span className="opacity-80">{label}</span>
+    42→    42→    </span>
+    43→    43→  );
+    44→    44→}
+    45→    45→
+    46→    46→function StatBox({ icon, label, value, hint }: { icon: React.ReactNode; label: string; value: string; hint?: string }) {
+    47→    47→  return (
+    48→    48→    <div className="rounded-xl border border-white/8 bg-card/70 p-3">
+    49→    49→      <p className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+    50→    50→        {icon} {label}
+    51→    51→      </p>
+    52→    52→      <p className="mt-1 text-base font-extrabold leading-tight">{value}</p>
+    53→    53→      {hint && <p className="mt-0.5 text-[10px] text-muted-foreground">{hint}</p>}
+    54→    54→    </div>
+    55→    55→  );
+    56→    56→}
+    57→    57→
+    58→    58→function TagChips({ work }: { work: WorkData }) {
+    59→    59→  const openExplore = usePortal((s) => s.openExplore);
+    60→    60→  return (
+    61→    61→    <div className="flex flex-wrap gap-1.5">
+    62→    62→      {work.tags.slice(0, 26).map((t) => (
+    63→    63→        <button
+    64→    64→          key={t.name}
+    65→    65→          onClick={() => openExplore({ tag: t.name, genre: "all" })}
+    66→    66→          title={`Relevância ${t.rank}%`}
+    67→    67→          className={`rounded-lg border px-2 py-1 text-[11px] font-medium transition hover:scale-105 ${
+    68→    68→            t.rank >= 80
+    69→    69→              ? "border-primary/35 bg-primary/10 text-violet-200 hover:bg-primary/20"
+    70→    70→              : t.rank >= 60
+    71→    71→              ? "border-white/12 bg-white/6 text-foreground/85 hover:bg-white/10"
+    72→    72→              : "border-white/8 bg-transparent text-muted-foreground hover:bg-white/6"
+    73→    73→          }`}
+    74→    74→        >
+    75→    75→          {t.name} <span className="opacity-50">{t.rank}</span>
+    76→    76→        </button>
+    77→    77→      ))}
+    78→    78→    </div>
+    79→    79→  );
+    80→    80→}
+    81→    81→
+    82→    82→const LINK_META: Record<string, { icon: React.ReactNode; group: string }> = {
+    83→    83→  "MangaPlus": { icon: <BookMarked className="h-4 w-4" />, group: "Oficial (leitura)" },
+    84→    84→  "Webtoons": { icon: <BookMarked className="h-4 w-4" />, group: "Oficial (leitura)" },
+    85→    85→  "Webtoon": { icon: <BookMarked className="h-4 w-4" />, group: "Oficial (leitura)" },
+    86→    86→  "Comikey": { icon: <BookMarked className="h-4 w-4" />, group: "Oficial (leitura)" },
+    87→    87→  "Tapas": { icon: <BookMarked className="h-4 w-4" />, group: "Oficial (leitura)" },
+    88→    88→  "Tappytoon": { icon: <BookMarked className="h-4 w-4" />, group: "Oficial (leitura)" },
+    89→    89→  "Lezhin": { icon: <BookMarked className="h-4 w-4" />, group: "Oficial (leitura)" },
+    90→    90→  "Bilibili Comics": { icon: <BookMarked className="h-4 w-4" />, group: "Oficial (leitura)" },
+    91→    91→  "VIZ": { icon: <BookMarked className="h-4 w-4" />, group: "Oficial (leitura)" },
+    92→    92→  "Kodansha": { icon: <BookMarked className="h-4 w-4" />, group: "Oficial (leitura)" },
+    93→    93→  "Yen Press": { icon: <BookMarked className="h-4 w-4" />, group: "Oficial (leitura)" },
+    94→    94→  "BookWalker": { icon: <ShoppingBag className="h-4 w-4" />, group: "Oficial (loja)" },
+    95→    95→  "Amazon": { icon: <ShoppingBag className="h-4 w-4" />, group: "Oficial (loja)" },
+    96→    96→  "Netflix": { icon: <Tv className="h-4 w-4" />, group: "Streaming" },
+    97→    97→  "Crunchyroll": { icon: <Tv className="h-4 w-4" />, group: "Streaming" },
+    98→    98→  "Hulu": { icon: <Tv className="h-4 w-4" />, group: "Streaming" },
+    99→    99→  "HIDIVE": { icon: <Tv className="h-4 w-4" />, group: "Streaming" },
+   100→   100→  "Amazon Prime Video": { icon: <Tv className="h-4 w-4" />, group: "Streaming" },
+   101→   101→  "MangaUpdates": { icon: <Database className="h-4 w-4" />, group: "Info & comunidade" },
+   102→   102→  "Anime-Planet": { icon: <Database className="h-4 w-4" />, group: "Info & comunidade" },
+   103→   103→  "AniList": { icon: <Database className="h-4 w-4" />, group: "Info & comunidade" },
+   104→   104→  "NovelUpdates": { icon: <Database className="h-4 w-4" />, group: "Info & comunidade" },
+   105→   105→  "LiveChart": { icon: <Database className="h-4 w-4" />, group: "Info & comunidade" },
+   106→   106→  "Twitter": { icon: <Bird className="h-4 w-4" />, group: "Redes & notícias" },
+   107→   107→  "Official Site": { icon: <BadgeCheck className="h-4 w-4" />, group: "Oficial (site)" },
+   108→   108→};
+   109→   109→
+   110→   110→function LinksPanel({ work }: { work: WorkData }) {
+   111→   111→  const groups = new Map<string, { site: string; url: string; color?: string | null }[]>();
+   112→   112→  for (const l of work.extLinks ?? []) {
+   113→   113→    const meta = LINK_META[l.site];
+   114→   114→    const group = meta?.group ?? (l.type === "STREAMING" ? "Streaming" : l.type === "SOCIAL" ? "Redes & notícias" : "Outros");
+   115→   115→    if (!groups.has(group)) groups.set(group, []);
+   116→   116→    groups.get(group)!.push({ site: l.site, url: l.url, color: l.color });
+   117→   117→  }
+   118→   118→
+   119→   119→  const mal = work.malId
+   120→   120→    ? work.type === "anime"
+   121→   121→      ? `https://myanimelist.net/anime/${work.malId}`
+   122→   122→      : `https://myanimelist.net/manga/${work.malId}`
+   123→   123→    : null;
+   124→   124→  const built: { site: string; url: string; icon: React.ReactNode; desc: string }[] = [];
+   125→   125→  if (mal) built.push({ site: "MyAnimeList", url: mal, icon: <Star className="h-4 w-4" />, desc: "Scores, reviews e listas da comunidade" });
+   126→   126→  built.push({ site: "X (Twitter)", url: `https://x.com/search?q=${encodeURIComponent(work.title)}&f=live`, icon: <Bird className="h-4 w-4" />, desc: "fãs, artistas e notícias em tempo real" });
+   127→   127→  built.push({ site: "MangaUpdates", url: `https://www.mangaupdates.com/series.html?search=${encodeURIComponent(work.titleEn ?? work.title)}`, icon: <Database className="h-4 w-4" />, desc: "licenciamentos, scans e publicação" });
+   128→   128→  built.push({ site: "Google Notícias", url: `https://news.google.com/search?q=${encodeURIComponent(work.title + " manga")}`, icon: <Newspaper className="h-4 w-4" />, desc: "anúncios de anime, capítulos e novidades" });
+   129→   129→  if (work.type === "lightnovel")
+   130→   130→    built.push({ site: "NovelUpdates", url: `https://www.novelupdates.com/?s=${encodeURIComponent(work.titleEn ?? work.title)}`, icon: <BookOpen className="h-4 w-4" />, desc: "lançamentos de traduções da LN" });
+   131→   131→
+   132→   132→  const groupOrder = ["Oficial (leitura)", "Oficial (site)", "Oficial (loja)", "Streaming", "Info & comunidade", "Redes & notícias", "Outros"];
+   133→   133→
+   134→   134→  return (
+   135→   135→    <div className="space-y-5">
+   136→   136→      <div className="rounded-xl border border-amber-500/25 bg-amber-500/5 p-3 text-[12px] text-amber-100/80">
+   137→   137→        <AlertTriangle className="mr-1.5 inline h-3.5 w-3.5" />
+   138→   138→        Portais oficiais apoiam os autores — sempre que existir, leia por lá. Links de comunidade servem pra acompanhar lançamentos, licenciamentos e discussões.
+   139→   139→      </div>
+   140→   140→      {[...groups.entries()].sort((a, b) => groupOrder.indexOf(a[0]) - groupOrder.indexOf(b[0])).map(([group, links]) => (
+   141→   141→        <div key={group}>
+   142→   142→          <h4 className="mb-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">{group}</h4>
+   143→   143→          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+   144→   144→            {links.map((l, i) => (
+   145→   145→              <a key={`${l.site}-${l.url}-${i}`} href={l.url} target="_blank" rel="noopener noreferrer"
+   146→   146→                className="group flex items-center justify-between gap-2 rounded-xl border border-white/8 bg-card/70 p-3 transition hover:border-primary/40 hover:bg-card">
+   147→   147→                <span className="flex items-center gap-2.5 overflow-hidden">
+   148→   148→                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/6 text-foreground/80 group-hover:text-primary">
+   149→   149→                    {LINK_META[l.site]?.icon ?? <Globe className="h-4 w-4" />}
+   150→   150→                  </span>
+   151→   151→                  <span className="truncate text-sm font-semibold">{l.site}</span>
+   152→   152→                </span>
+   153→   153→                <ExternalLink className="h-3.5 w-3.5 shrink-0 text-muted-foreground group-hover:text-primary" />
+   154→   154→              </a>
+   155→   155→            ))}
+   156→   156→          </div>
+   157→   157→        </div>
+   158→   158→      ))}
+   159→   159→      <div>
+   160→   160→        <h4 className="mb-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">Radar externo (gerados pra essa obra)</h4>
+   161→   161→        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+   162→   162→          {built.map((l) => (
+   163→   163→            <a key={l.site} href={l.url} target="_blank" rel="noopener noreferrer"
+   164→   164→              className="group rounded-xl border border-white/8 bg-card/70 p-3 transition hover:border-primary/40 hover:bg-card">
+   165→   165→              <span className="flex items-center justify-between gap-2">
+   166→   166→                <span className="flex items-center gap-2.5">
+   167→   167→                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/6 text-foreground/80 group-hover:text-primary">{l.icon}</span>
+   168→   168→                  <span className="text-sm font-semibold">{l.site}</span>
+   169→   169→                </span>
+   170→   170→                <ExternalLink className="h-3.5 w-3.5 shrink-0 text-muted-foreground group-hover:text-primary" />
+   171→   171→              </span>
+   172→   172→              <span className="mt-1.5 block text-[11px] leading-snug text-muted-foreground">{l.desc}</span>
+   173→   173→            </a>
+   174→   174→          ))}
+   175→   175→        </div>
+   176→   176→      </div>
+   177→   177→    </div>
+   178→   178→  );
+   179→   179→}
+   180→   180→
+   181→   181→function AnalysisPanel({ work, onSynopsis }: { work: WorkData; onSynopsis: (pt: string) => void }) {
+   182→   182→  const { toast } = useToast();
+   183→   183→  const [analysis, setAnalysis] = useState<string | null>(null);
+   184→   184→  const [loading, setLoading] = useState(false);
+   185→   185→  const [phase, setPhase] = useState(0);
+   186→   186→  const phases = ["Lendo os dados da obra...", "Cruzando tags e parecidas...", "Aoi escrevendo o veredito..."];
+   187→   187→
+   188→   188→  useEffect(() => {
+   189→   189→    if (!loading) return;
+   190→   190→    const t = setInterval(() => setPhase((p) => (p + 1) % phases.length), 1600);
+   191→   191→    return () => clearInterval(t);
+   192→   192→  }, [loading]);
+   193→   193→
+   194→   194→  const run = async () => {
+   195→   195→    setLoading(true);
+   196→   196→    setAnalysis(null);
+   197→   197→    try {
+   198→   198→      const res = await fetch("/api/ai/analyze", {
+   199→   199→        method: "POST",
+   200→   200→        headers: { "Content-Type": "application/json" },
+   201→   201→        body: JSON.stringify({ id: work.id }),
+   202→   202→      });
+   203→   203→      const d = await res.json();
+   204→   204→      if (!d.ok) throw new Error(d.error);
+   205→   205→      setAnalysis(d.analysis);
+   206→   206→      if (d.synopsisPT) onSynopsis(d.synopsisPT);
+   207→   207→    } catch (e: any) {
+   208→   208→      toast({ title: "A IA pisou na bola", description: e.message ?? "Tente de novo em instantes.", variant: "destructive" });
+   209→   209→    } finally {
+   210→   210→      setLoading(false);
+   211→   211→    }
+   212→   212→  };
+   213→   213→
+   214→   214→  if (!analysis && !loading) {
+   215→   215→    return (
+   216→   216→      <div className="flex flex-col items-center gap-4 rounded-2xl border border-dashed border-primary/30 bg-primary/5 p-10 text-center">
+   217→   217→        <span className="bg-brand-gradient flex h-14 w-14 items-center justify-center rounded-2xl text-2xl shadow-lg shadow-violet-950/40">
+   218→   218→          🍡
+   219→   219→        </span>
+   220→   220→        <div>
+   221→   221→          <p className="font-extrabold">Análise da curadora IA — Aoi</p>
+   222→   222→          <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
+   223→   223→            Ela cruza nota, tags, parecidas e histórico pra gerar um veredito honesto: arte, história, ritmo, nível de picância e pra quem é.
+   224→   224→          </p>
+   225→   225→        </div>
+   226→   226→        <Button onClick={run} className="bg-brand-gradient font-bold text-white hover:brightness-110">
+   227→   227→          <Sparkles className="h-4 w-4" /> Gerar análise em português
+   228→   228→        </Button>
+   229→   229→      </div>
+   230→   230→    );
+   231→   231→  }
+   232→   232→
+   233→   233→  if (loading) {
+   234→   234→    return (
+   235→   235→      <div className="flex flex-col items-center gap-4 rounded-2xl border border-primary/25 bg-card/60 p-10 text-center">
+   236→   236→        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+   237→   237→        <p className="text-sm font-semibold text-violet-200">{phases[phase]}</p>
+   238→   238→        <p className="text-xs text-muted-foreground">a Aoi está caprichando — costuma levar ~15s</p>
+   239→   239→      </div>
+   240→   240→    );
+   241→   241→  }
+   242→   242→
+   243→   243→  return (
+   244→   244→    <div className="fade-in rounded-2xl border border-primary/25 bg-card/70 p-5 sm:p-7">
+   245→   245→      <div className="markdown-aoi">
+   246→   246→        <AoiMarkdown content={analysis ?? ""} />
+   247→   247→      </div>
+   248→   248→      <div className="mt-5 flex justify-end">
+   249→   249→        <Button variant="outline" size="sm" onClick={run} disabled={loading} className="border-primary/30 text-violet-200 hover:bg-primary/10">
+   250→   250→          <Sparkles className="h-3.5 w-3.5" /> Regenerar análise
+   251→   251→        </Button>
+   252→   252→      </div>
+   253→   253→    </div>
+   254→   254→  );
+   255→   255→}
+   256→   256→
+   257→   257→export function DetailView({ workId }: { workId: string }) {
+   258→   258→  const go = usePortal((s) => s.go);
+   259→   259→  const [data, setData] = useState<DetailPayload | null>(null);
+   260→   260→  const [error, setError] = useState<string | null>(null);
+   261→   261→  const [synopsisPT, setSynopsisPT] = useState<string | null>(null);
+   262→   262→  const [ptLoading, setPtLoading] = useState(false);
+   263→   263→
+   264→   264→  useEffect(() => {
+   265→   265→    let alive = true;
+   266→   266→    setData(null);
+   267→   267→    setError(null);
+   268→   268→    setSynopsisPT(null);
+   269→   269→    fetch(`/api/works/${workId}`)
+   270→   270→      .then((r) => r.json())
+   271→   271→      .then((d) => {
+   272→   272→        if (!alive) return;
+   273→   273→        if (d.ok) setData(d);
+   274→   274→        else setError(d.error ?? "Obra não encontrada");
+   275→   275→      })
+   276→   276→      .catch(() => alive && setError("Falha ao carregar a obra"));
+   277→   277→    return () => { alive = false; };
+   278→   278→  }, [workId]);
+   279→   279→
+   280→   280→  const work = data?.work;
+   281→   281→  const next = useMemo(() => (work ? getNextRelease(work) : null), [work]);
+   282→   282→  const langs = useMemo(() => (work ? getLanguages(work) : []), [work]);
+   283→   283→
+   284→   284→  const loadPT = async () => {
+   285→   285→    if (!work) return;
+   286→   286→    setPtLoading(true);
+   287→   287→    try {
+   288→   288→      const res = await fetch("/api/ai/synopsis", {
+   289→   289→        method: "POST",
+   290→   290→        headers: { "Content-Type": "application/json" },
+   291→   291→        body: JSON.stringify({ id: work.id }),
+   292→   292→      });
+   293→   293→      const d = await res.json();
+   294→   294→      if (d.ok && d.synopsisPT) setSynopsisPT(d.synopsisPT);
+   295→   295→    } finally {
+   296→   296→      setPtLoading(false);
+   297→   297→    }
+   298→   298→  };
+   299→   299→
+   300→   300→  if (error) {
+   301→   301→    return (
+   302→   302→      <div className="fade-in mx-auto max-w-md rounded-2xl border border-white/8 bg-card p-10 text-center">
+   303→   303→        <p className="font-bold">{error}</p>
+   304→   304→        <Button variant="outline" className="mt-4" onClick={() => go("home")}>
+   305→   305→          <ArrowLeft className="h-4 w-4" /> Voltar ao início
+   306→   306→        </Button>
+   307→   307→      </div>
+   308→   308→    );
+   309→   309→  }
+   310→   310→
+   311→   311→  if (!work) {
+   312→   312→    return (
+   313→   313→      <div className="space-y-4">
+   314→   314→        <div className="shimmer h-[280px] rounded-2xl" />
+   315→   315→        <div className="shimmer h-8 w-2/3 rounded" />
+   316→   316→        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+   317→   317→          {Array.from({ length: 8 }).map((_, i) => <div key={i} className="shimmer h-20 rounded-xl" />)}
+   318→   318→        </div>
+   319→   319→      </div>
+   320→   320→    );
+   321→   321→  }
+   322→   322→
+   323→   323→  const orderedAuthors = mainAuthors(work);
+   324→   324→  const authorLine = orderedAuthors.length > 0
+   325→   325→    ? orderedAuthors.map((a) => `${a.name}${a.role ? ` (${a.role})` : ""}`).join(" · ")
+   326→   326→    : "—";
+   327→   327→  const primaryAuthor = orderedAuthors[0]?.name ?? "—";
+   328→   328→  const primaryAuthorRole = orderedAuthors[0]?.role;
+   329→   329→
+   330→   330→  return (
+   331→   331→    <div className="fade-in space-y-6">
+   332→   332→      {/* Banner + identidade */}
+   333→   333→      <section className="relative overflow-hidden rounded-2xl border border-white/8">
+   334→   334→        <div className="relative h-[240px] sm:h-[300px]">
+   335→   335→          {work.banner ? (
+   336→   336→            <img src={work.banner} alt={`Arte de fundo de ${work.title}`} className="h-full w-full object-cover" />
+   337→   337→          ) : (
+   338→   338→            <div className="h-full w-full bg-gradient-to-br from-violet-950 via-fuchsia-950/60 to-slate-950" />
+   339→   339→          )}
+   340→   340→          <div className="absolute inset-0 bg-gradient-to-t from-[#07070d] via-[#07070db0]/70 to-transparent" />
+   341→   341→        </div>
+   342→   342→        <div className="relative -mt-24 flex flex-col gap-5 p-5 sm:-mt-28 sm:flex-row sm:p-7">
+   343→   343→          <div className="w-32 shrink-0 sm:w-44">
+   344→   344→            <div className="overflow-hidden rounded-xl border border-white/10 shadow-2xl shadow-black/60">
+   345→   345→              <img src={work.cover} alt={`Capa de ${work.title}`} className="aspect-[2/3] w-full object-cover" />
+   346→   346→            </div>
+   347→   347→          </div>
+   348→   348→          <div className="min-w-0 flex-1">
+   349→   349→            <div className="mb-2 flex flex-wrap items-center gap-2">
+   350→   350→              <TypeBadge type={work.type} />
+   351→   351→              <ScoreBadge score={work.avgScore} />
+   352→   352→              <span className="text-xs text-muted-foreground">{COUNTRY_FLAG[work.country ?? ""] ?? ""} {STATUS_LABEL[work.status ?? ""] ?? work.status}</span>
+   353→   353→            </div>
+   354→   354→            <h1 className="text-2xl font-black leading-tight tracking-tight sm:text-4xl">{work.title}</h1>
+   355→   355→            {(work.titleEn || work.titleNative) && (
+   356→   356→              <p className="mt-1 text-sm text-muted-foreground">
+   357→   357→                {[work.titleEn !== work.title ? work.titleEn : null, work.titleNative].filter(Boolean).join(" · ")}
+   358→   358→              </p>
+   359→   359→            )}
+   360→   360→            <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+   361→   361→              <span className="inline-flex items-center gap-1"><Users className="h-3.5 w-3.5" /> {fmtNum(work.popularity)} leitores</span>
+   362→   362→              <span className="inline-flex items-center gap-1"><Heart className="h-3.5 w-3.5" /> {fmtNum(work.favourites)} favoritos</span>
+   363→   363→              <span className="inline-flex items-center gap-1"><CalendarDays className="h-3.5 w-3.5" /> {fmtDate(work.startDate)}</span>
+   364→   364→              {work.siteUrl && (
+   365→   365→                <a href={work.siteUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-violet-300 hover:underline">
+   366→   366→                  <ExternalLink className="h-3.5 w-3.5" /> página na AniList
+   367→   367→                </a>
+   368→   368→              )}
+   369→   369→            </div>
+   370→   370→            <div className="mt-3 flex flex-wrap gap-1.5">
+   371→   371→              {work.genres.map((g) => (
+   372→   372→                <span key={g} className="rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-semibold">{g}</span>
+   373→   373→              ))}
+   374→   374→            </div>
+   375→   375→          </div>
+   376→   376→        </div>
+   377→   377→      </section>
+   378→   378→
+   379→   379→      {/* Stats rápidos */}
+   380→   380→      <section className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+   381→   381→        <StatBox icon={<Star className="h-3 w-3" />} label="Nota AniList" value={work.avgScore != null ? `${work.avgScore}%` : "—"} hint={`${fmtNum(work.favourites)} favoritos`} />
+   382→   382→        <StatBox icon={<Layers className="h-3 w-3" />} label={work.type === "anime" ? "Episódios" : "Capítulos"} value={String(work.type === "anime" ? work.episodes ?? "—" : work.chapters ?? "—")} hint={work.volumes ? `${work.volumes} volumes` : work.duration ? `${work.duration} min/ep` : undefined} />
+   383→   383→        <StatBox icon={<BookOpen className="h-3 w-3" />} label="Status" value={STATUS_LABEL[work.status ?? ""] ?? work.status ?? "—"} hint={work.source ? `fonte: ${work.source.toLowerCase()}` : undefined} />
+   384→   384→        <StatBox icon={<Clock className="h-3 w-3" />} label={next?.kind === "anime" ? "Próx. episódio" : "Próx. capítulo"} value={next?.label ?? "—"} hint={next?.detail} />
+   385→   385→        <StatBox icon={<CalendarDays className="h-3 w-3" />} label="Início" value={fmtDate(work.startDate)} hint={work.endDate ? `fim: ${fmtDate(work.endDate)}` : undefined} />
+   386→   386→        <StatBox icon={<User className="h-3 w-3" />} label="Autoria" value={primaryAuthor} hint={primaryAuthorRole} />
+   387→   387→      </section>
+   388→   388→
+   389→   389→      <Tabs defaultValue="geral" className="w-full">
+   390→   390→        <TabsList className="flex h-auto w-full flex-wrap gap-1 bg-card/70 p-1 sm:flex-nowrap">
+   391→   391→          <TabsTrigger value="geral" className="flex-1 gap-1.5"><Info className="h-3.5 w-3.5" /> Visão geral</TabsTrigger>
+   392→   392→          <TabsTrigger value="links" className="flex-1 gap-1.5"><Globe className="h-3.5 w-3.5" /> Onde ler & links</TabsTrigger>
+   393→   393→          <TabsTrigger value="parecidas" className="flex-1 gap-1.5"><Flame className="h-3.5 w-3.5" /> Parecidas</TabsTrigger>
+   394→   394→          <TabsTrigger value="ia" className="flex-1 gap-1.5"><Sparkles className="h-3.5 w-3.5" /> Análise IA</TabsTrigger>
+   395→   395→        </TabsList>
+   396→   396→
+   397→   397→        <TabsContent value="geral" className="mt-4 space-y-6">
+   398→   398→          <div className="grid gap-5 lg:grid-cols-3">
+   399→   399→            <div className="space-y-5 lg:col-span-2">
+   400→   400→              <div className="rounded-2xl border border-white/8 bg-card/60 p-5">
+   401→   401→                <div className="mb-3 flex items-center justify-between gap-3">
+   402→   402→                  <h3 className="flex items-center gap-2 text-sm font-extrabold uppercase tracking-wider text-muted-foreground">
+   403→   403→                    <Languages className="h-4 w-4" /> Idiomas disponíveis
+   404→   404→                  </h3>
+   405→   405→                </div>
+   406→   406→                <div className="flex flex-wrap gap-2">
+   407→   407→                  {langs.map((l) => <LangChip key={l.code + l.status} l={l} />)}
+   408→   408→                </div>
+   409→   409→                <p className="mt-3 text-[11px] leading-relaxed text-muted-foreground">
+   410→   410→                  Original + idiomas com publicação oficial detectada pelos portais linkados. “Provável” = obras de grande porte quase sempre licenciadas (ex.: editoras BR). Confirme na aba “Onde ler & links”.
+   411→   411→                </p>
+   412→   412→              </div>
+   413→   413→
+   414→   414→              <div className="rounded-2xl border border-white/8 bg-card/60 p-5">
+   415→   415→                <h3 className="mb-3 text-sm font-extrabold uppercase tracking-wider text-muted-foreground">Sinopse</h3>
+   416→   416→                {synopsisPT ? (
+   417→   417→                  <p className="whitespace-pre-line text-sm leading-relaxed text-foreground/90">{synopsisPT}</p>
+   418→   418→                ) : work.synopsisPT ? (
+   419→   419→                  <p className="whitespace-pre-line text-sm leading-relaxed text-foreground/90">{work.synopsisPT}</p>
+   420→   420→                ) : (
+   421→   421→                  <>
+   422→   422→                    <p className="whitespace-pre-line text-sm leading-relaxed text-foreground/90">{work.synopsis ?? "Sem sinopse disponível."}</p>
+   423→   423→                    <Button size="sm" variant="outline" onClick={loadPT} disabled={ptLoading}
+   424→   424→                      className="mt-3 border-primary/30 text-violet-200 hover:bg-primary/10">
+   425→   425→                      {ptLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+   426→   426→                      Traduzir com IA (PT-BR)
+   427→   427→                    </Button>
+   428→   428→                  </>
+   429→   429→                )}
+   430→   430→              </div>
+   431→   431→            </div>
+   432→   432→
+   433→   433→            <div className="space-y-5">
+   434→   434→              <div className="rounded-2xl border border-white/8 bg-card/60 p-5">
+   435→   435→                <h3 className="mb-3 flex items-center gap-2 text-sm font-extrabold uppercase tracking-wider text-muted-foreground">
+   436→   436→                  <User className="h-4 w-4" /> Autoria & dados
+   437→   437→                </h3>
+   438→   438→                <p className="text-sm font-semibold">{authorLine}</p>
+   439→   439→                <dl className="mt-4 space-y-2 text-[13px]">
+   440→   440→                  <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Origem</dt><dd>{COUNTRY_FLAG[work.country ?? ""] ?? "—"} {work.country ?? "—"}</dd></div>
+   441→   441→                  <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Formato</dt><dd>{work.format ?? "—"}</dd></div>
+   442→   442→                  <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Volumos</dt><dd>{work.volumes ?? "—"}</dd></div>
+   443→   443→                  <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Popularidade</dt><dd>#{fmtNum(work.popularity)}</dd></div>
+   444→   444→                  {work.idMal && <div className="flex justify-between gap-3"><dt className="text-muted-foreground">ID MAL</dt><dd>{work.idMal}</dd></div>}
+   445→   445→                </dl>
+   446→   446→              </div>
+   447→   447→              <div className="rounded-2xl border border-white/8 bg-card/60 p-5">
+   448→   448→                <h3 className="mb-3 flex items-center gap-2 text-sm font-extrabold uppercase tracking-wider text-muted-foreground">
+   449→   449→                  <Flame className="h-4 w-4" /> Tags ({work.tags.length})
+   450→   450→                </h3>
+   451→   451→                <TagChips work={work} />
+   452→   452→              </div>
+   453→   453→            </div>
+   454→   454→          </div>
+   455→   455→        </TabsContent>
+   456→   456→
+   457→   457→        <TabsContent value="links" className="mt-4">
+   458→   458→          <LinksPanel work={work} />
+   459→   459→        </TabsContent>
+   460→   460→
+   461→   461→        <TabsContent value="parecidas" className="mt-4 space-y-8">
+   462→   462→          {data?.related.similar?.length ? (
+   463→   463→            <div>
+   464→   464→              <h3 className="mb-3 flex items-center gap-2 text-lg font-extrabold">
+   465→   465→                <Flame className="h-5 w-5 text-orange-400" /> Obras parecidas
+   466→   466→                <span className="text-xs font-medium text-muted-foreground">— calculado por sobreposição de tags e gêneros</span>
+   467→   467→              </h3>
+   468→   468→              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
+   469→   469→                {data.related.similar.map((w) => <WorkCard key={w.id} work={w} />)}
+   470→   470→              </div>
+   471→   471→            </div>
+   472→   472→          ) : (
+   473→   473→            <p className="text-sm text-muted-foreground">Sem parecidas calculadas ainda.</p>
+   474→   474→          )}
+   475→   475→          {data?.related.also?.length ? (
+   476→   476→            <div>
+   477→   477→              <h3 className="mb-3 text-lg font-extrabold">Você provavelmente vai curtir também</h3>
+   478→   478→              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
+   479→   479→                {data.related.also.map((w) => <WorkCard key={w.id} work={w} />)}
+   480→   480→              </div>
+   481→   481→            </div>
+   482→   482→          ) : null}
+   483→   483→          {data?.related.byAuthor?.map(({ author, works }) => (
+   484→   484→            <div key={author}>
+   485→   485→              <h3 className="mb-3 flex items-center gap-2 text-lg font-extrabold">
+   486→   486→                <User className="h-5 w-5 text-violet-300" /> Outras obras de {author}
+   487→   487→              </h3>
+   488→   488→              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
+   489→   489→                {works.map((w) => <WorkCard key={w.id} work={w} />)}
+   490→   490→              </div>
+   491→   491→            </div>
+   492→   492→          ))}
+   493→   493→        </TabsContent>
+   494→   494→
+   495→   495→        <TabsContent value="ia" className="mt-4">
+   496→   496→          <AnalysisPanel work={work} onSynopsis={setSynopsisPT} />
+   497→   497→        </TabsContent>
+   498→   498→      </Tabs>
+   499→   499→
+   500→   500→      <div>
+   501→   501→        <Button variant="outline" size="sm" onClick={() => go("home")} className="gap-1.5">
+   502→   502→          <ArrowLeft className="h-3.5 w-3.5" /> Voltar
+   503→   503→        </Button>
+   504→   504→      </div>
+   505→   505→    </div>
+   506→   506→  );
+   507→   507→}
+   508→   508→

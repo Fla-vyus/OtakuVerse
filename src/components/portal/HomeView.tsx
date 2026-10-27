@@ -1,121 +1,201 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { Sparkles, Star, Users, Layers, ChevronLeft, ChevronRight, Flame, CalendarDays, Languages, BookOpen, MonitorPlay, Crown } from "lucide-react";
-import { TYPE_LABEL, fmtNum, fmtDate, type WorkData, type WorkType } from "@/lib/types";
-import { usePortal } from "./store";
-import { WorkRow, TypeBadge, ScoreBadge } from "./WorkCard";
+import { useEffect, useRef, useState } from "react";
+import { ChevronLeft, ChevronRight, Flame, Star, Sparkles, Trophy, Rocket, CalendarDays, Newspaper, Gauge, ListFilter } from "lucide-react";
+import { usePortal, HYPE_MODES } from "./store";
+import { CardRow, WorkCard } from "./WorkCard";
+import type { WorkData } from "@/lib/types";
 
-const HERO_COUNT = 6;
+interface NewsItem {
+  id: string; kind: string; title: string; summary: string;
+  image: string | null; date: string; workId: string; badge: string;
+}
 
-function Hero({ works }: { works: WorkData[] }) {
+function SectionHeader({ icon, title, sub, action }: { icon: React.ReactNode; title: string; sub: string; action?: React.ReactNode }) {
+  return (
+    <div className="mb-3 flex items-end justify-between gap-3">
+      <div>
+        <h2 className="flex items-center gap-2 text-lg font-black tracking-tight sm:text-xl">
+          <span className="bg-brand-gradient flex h-7 w-7 items-center justify-center rounded-lg text-white">{icon}</span>
+          {title}
+        </h2>
+        <p className="mt-0.5 text-xs text-muted-foreground">{sub}</p>
+      </div>
+      {action}
+    </div>
+  );
+}
+
+/** Carrossel Hype — os melhores do momento, com modos trocáveis */
+function HypeCarousel() {
+  const hypeMode = usePortal((s) => s.hypeMode);
+  const setHypeMode = usePortal((s) => s.setHypeMode);
   const openWork = usePortal((s) => s.openWork);
+  const openWorkRef = useRef(openWork);
+  openWorkRef.current = openWork;
+  const [items, setItems] = useState<WorkData[] | null>(null);
   const [idx, setIdx] = useState(0);
-  const hero = useMemo(() => works.filter((w) => w.banner).slice(0, HERO_COUNT), [works]);
+  const [paused, setPaused] = useState(false);
 
   useEffect(() => {
-    if (hero.length < 2) return;
-    const t = setInterval(() => setIdx((i) => (i + 1) % hero.length), 7000);
-    return () => clearInterval(t);
-  }, [hero.length]);
+    let alive = true;
+    setItems(null);
+    fetch(`/api/hype?mode=${hypeMode}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (alive && d.ok) setItems(d.items);
+      })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [hypeMode]);
 
-  if (hero.length === 0) return null;
-  const w = hero[idx % hero.length];
+  useEffect(() => {
+    if (!items || items.length < 2 || paused) return;
+    const t = setInterval(() => setIdx((i) => (i + 1) % items.length), 6000);
+    return () => clearInterval(t);
+  }, [items, paused]);
+
+  const mode = HYPE_MODES.find((m) => m.id === hypeMode) ?? HYPE_MODES[0];
+  const w = items?.[idx];
 
   return (
-    <section className="relative overflow-hidden rounded-2xl border border-white/8" aria-label="Destaques">
-      <div className="relative h-[380px] sm:h-[440px] md:h-[500px]">
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={w.id}
-            initial={{ opacity: 0, scale: 1.04 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.7 }}
-            className="absolute inset-0"
-          >
-            <img src={w.banner ?? w.cover} alt={`Arte de ${w.title}`} className="h-full w-full object-cover" />
-            <div className="absolute inset-0 bg-gradient-to-t from-[#07070d] via-[#07070dcc]/80 to-transparent" />
-            <div className="absolute inset-0 bg-gradient-to-r from-[#07070d]/80 via-transparent to-transparent" />
-          </motion.div>
-        </AnimatePresence>
+    <section
+      className="relative overflow-hidden rounded-3xl border border-border"
+      onMouseEnter={() => setPaused(true)}
+      onMouseLeave={() => setPaused(false)}
+      aria-label="Destaques"
+    >
+      {/* fundo */}
+      {w?.banner || w?.cover ? (
+        <img
+          src={`/api/img?u=${encodeURIComponent(w.banner ?? w.cover!)}`}
+          alt=""
+          referrerPolicy="no-referrer"
+          className="kenburns absolute inset-0 h-full w-full object-cover"
+          key={w.id + idx}
+        />
+      ) : (
+        <div className="absolute inset-0 bg-hero-grad" />
+      )}
+      <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/45 to-black/20" />
 
-        <div className="absolute inset-x-0 bottom-0 p-5 sm:p-8 md:p-10">
-          <motion.div key={`info-${w.id}`} initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.1 }}>
-            <div className="mb-3 flex flex-wrap items-center gap-2">
-              <TypeBadge type={w.type} />
-              <ScoreBadge score={w.avgScore} />
-              <span className="inline-flex items-center gap-1 rounded-md border border-white/10 bg-white/5 px-1.5 py-0.5 text-[11px] text-white/80">
-                <Users className="h-3 w-3" /> {fmtNum(w.popularity)} leitores
-              </span>
-              {w.startDate && (
-                <span className="inline-flex items-center gap-1 rounded-md border border-white/10 bg-white/5 px-1.5 py-0.5 text-[11px] text-white/80">
-                  <CalendarDays className="h-3 w-3" /> {w.startDate.slice(0, 4)}
-                </span>
-              )}
-            </div>
-            <h1 className="max-w-2xl text-2xl font-black leading-tight tracking-tight sm:text-4xl md:text-5xl">
-              {w.title}
-            </h1>
-            <p className="mt-2 line-clamp-2 max-w-xl text-sm text-white/75 sm:text-[15px]">
-              {w.synopsis ?? "Uma das obras mais marcantes do catálogo."}
-            </p>
-            <div className="mt-4 flex flex-wrap gap-2">
-              <button
-                onClick={() => openWork(w.id)}
-                className="bg-brand-gradient rounded-xl px-5 py-2.5 text-sm font-bold text-white shadow-lg shadow-violet-950/40 transition hover:brightness-110"
-              >
-                Ver detalhes completos
-              </button>
-              <div className="flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 backdrop-blur">
-                {w.genres.slice(0, 3).map((g) => (
-                  <span key={g} className="text-[11px] font-medium text-white/70">{g}</span>
-                ))}
-              </div>
-            </div>
-          </motion.div>
-        </div>
-
-        <div className="absolute right-4 top-1/2 hidden -translate-y-1/2 gap-2 sm:flex sm:flex-col">
-          {hero.map((h, i) => (
+      <div className="relative z-10 p-4 pb-6 sm:p-6">
+        {/* seletor de modo */}
+        <div className="no-scrollbar mb-4 flex gap-2 overflow-x-auto">
+          {HYPE_MODES.map((m) => (
             <button
-              key={h.id}
-              onClick={() => setIdx(i)}
-              aria-label={`Destaque ${i + 1}: ${h.title}`}
-              className={`h-1.5 rounded-full transition-all ${i === idx % hero.length ? "w-7 bg-primary" : "w-3 bg-white/30 hover:bg-white/50"}`}
-            />
+              key={m.id}
+              onClick={() => setHypeMode(m.id)}
+              className={`flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-bold backdrop-blur transition ${
+                hypeMode === m.id ? "bg-white text-slate-900 shadow-lg" : "bg-white/15 text-white hover:bg-white/25"
+              }`}
+              title={m.desc}
+            >
+              {m.id === "hype" && <Flame className="h-3.5 w-3.5" />}
+              {m.id === "score" && <Star className="h-3.5 w-3.5" />}
+              {m.id === "new" && <Rocket className="h-3.5 w-3.5" />}
+              {m.id === "classic" && <Trophy className="h-3.5 w-3.5" />}
+              {m.name}
+            </button>
           ))}
         </div>
+
+        {w ? (
+          <div className="fade-up flex items-center gap-4 sm:gap-6" key={w.id}>
+            <button onClick={() => openWorkRef.current(w.id)} className="hidden w-36 shrink-0 overflow-hidden rounded-2xl shadow-2xl transition hover:scale-[1.03] sm:block md:w-44">
+              <img
+                src={`/api/img?u=${encodeURIComponent(w.cover)}`}
+                alt={`Capa de ${w.title}`}
+                referrerPolicy="no-referrer"
+                loading="lazy"
+                className="aspect-[2/3] w-full object-cover"
+              />
+            </button>
+            <div className="min-w-0 flex-1 text-white">
+              <p className="mb-1 text-[11px] font-bold uppercase tracking-widest text-white/70">{mode.desc}</p>
+              <h2 className="line-clamp-2 text-2xl font-black leading-tight drop-shadow sm:text-4xl">{w.title}</h2>
+              <p className="mt-2 line-clamp-2 max-w-2xl text-xs text-white/80 sm:text-sm">{w.synopsis}</p>
+              <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px]">
+                <span className="rounded-md bg-white/20 px-2 py-1 font-bold backdrop-blur">⭐ {w.avgScore ?? "—"}</span>
+                <span className="rounded-md bg-white/20 px-2 py-1 font-bold capitalize backdrop-blur">{w.type}</span>
+                {w.genres.slice(0, 3).map((g) => (
+                  <span key={g} className="rounded-md bg-white/10 px-2 py-1 backdrop-blur">{g}</span>
+                ))}
+                <button
+                  onClick={() => openWorkRef.current(w.id)}
+                  className="bg-brand-gradient ml-auto hidden rounded-xl px-4 py-2 text-sm font-bold text-white shadow-lg transition hover:brightness-110 sm:block"
+                >
+                  Ver obra
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="flex h-48 items-center justify-center text-white/70">
+            <Sparkles className="mr-2 h-5 w-5 animate-pulse" /> Buscando os melhores do momento...
+          </div>
+        )}
+
+        {/* controles */}
+        {items && items.length > 1 && (
+          <div className="mt-4 flex items-center justify-between">
+            <div className="flex gap-1.5">
+              {items.slice(0, 8).map((_, i) => (
+                <button
+                  key={i}
+                  onClick={() => setIdx(i)}
+                  aria-label={`Destaque ${i + 1}`}
+                  className={`h-1.5 rounded-full transition-all ${i === idx ? "w-6 bg-white" : "w-1.5 bg-white/40"}`}
+                />
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => setIdx((i) => (i - 1 + items.length) % items.length)} className="flex h-8 w-8 items-center justify-center rounded-full bg-white/15 text-white backdrop-blur transition hover:bg-white/30" aria-label="Anterior">
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              <button onClick={() => setIdx((i) => (i + 1) % items.length)} className="flex h-8 w-8 items-center justify-center rounded-full bg-white/15 text-white backdrop-blur transition hover:bg-white/30" aria-label="Próximo">
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </section>
   );
 }
 
-function CategoryChips() {
-  const openExplore = usePortal((s) => s.openExplore);
-  const cats: { type: WorkType; icon: React.ReactNode; desc: string }[] = [
-    { type: "manga", icon: <BookOpen className="h-4 w-4" />, desc: "clássicos e novos do Japão" },
-    { type: "manhwa", icon: <Layers className="h-4 w-4" />, desc: "webtoons coreanos em vertical" },
-    { type: "lightnovel", icon: <Sparkles className="h-4 w-4" />, desc: "a origem literária dos isekais" },
-    { type: "anime", icon: <MonitorPlay className="h-4 w-4" />, desc: "da temporada e eternos" },
-  ];
+function NewsTeaser({ news }: { news: NewsItem[] }) {
+  const openWork = usePortal((s) => s.openWork);
+  const go = usePortal((s) => s.go);
+  if (!news?.length) return null;
   return (
-    <section className="fade-up">
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        {cats.map((c) => (
+    <section className="cv-auto">
+      <SectionHeader icon={<Newspaper className="h-4 w-4" />} title="Central de Notícias" sub="O que aconteceu no mundo otaku — dados reais, atualizado o dia todo" action={
+        <button onClick={() => go("news")} className="flex items-center gap-1 text-xs font-bold text-primary hover:underline">ver tudo <ChevronRight className="h-3.5 w-3.5" /></button>
+      } />
+      <div className="no-scrollbar flex gap-3 overflow-x-auto pb-2">
+        {news.slice(0, 8).map((n) => (
           <button
-            key={c.type}
-            onClick={() => openExplore({ type: c.type, genre: "all", tag: "all" })}
-            className="card-hover group flex items-center gap-3 rounded-xl border border-white/8 bg-card/70 p-4 text-left"
+            key={n.id}
+            onClick={() => openWork(n.workId)}
+            className="group w-64 shrink-0 overflow-hidden rounded-2xl border border-border bg-card text-left transition hover:-translate-y-0.5 hover:shadow-lg"
           >
-            <span className="bg-brand-gradient flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-white shadow-lg shadow-violet-950/40">
-              {c.icon}
-            </span>
-            <span>
-              <span className="block text-sm font-bold">{TYPE_LABEL[c.type]}</span>
-              <span className="block text-[11px] text-muted-foreground">{c.desc}</span>
-            </span>
+            <div className="relative aspect-video w-full overflow-hidden" style={{ background: "var(--muted)" }}>
+              {n.image && (
+                <img
+                  src={`/api/img?u=${encodeURIComponent(n.image)}`}
+                  alt={n.title}
+                  loading="lazy"
+                  referrerPolicy="no-referrer"
+                  className="h-full w-full object-cover transition group-hover:scale-105"
+                />
+              )}
+              <span className="bg-brand-gradient absolute left-2 top-2 rounded-md px-2 py-0.5 text-[10px] font-black uppercase text-white">{n.badge}</span>
+            </div>
+            <div className="p-3">
+              <p className="line-clamp-1 text-sm font-bold">{n.title}</p>
+              <p className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-muted-foreground">{n.summary}</p>
+            </div>
           </button>
         ))}
       </div>
@@ -123,110 +203,125 @@ function CategoryChips() {
   );
 }
 
-function AiBanner() {
-  const go = usePortal((s) => s.go);
-  return (
-    <section className="fade-up relative overflow-hidden rounded-2xl border border-primary/25 bg-gradient-to-r from-violet-950/60 via-fuchsia-950/30 to-transparent p-6 sm:p-8">
-      <div className="pointer-events-none absolute -right-10 -top-14 h-48 w-48 rounded-full bg-primary/20 blur-3xl" />
-      <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="max-w-xl">
-          <p className="mb-1 inline-flex items-center gap-1.5 rounded-full border border-primary/40 bg-primary/10 px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-violet-200">
-            <Sparkles className="h-3 w-3" /> Inteligência artificial
-          </p>
-          <h3 className="text-xl font-extrabold sm:text-2xl">Já viu tudo e acha tudo saturado?</h3>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Converse com a <b className="text-foreground">Aoi</b>, a curadora IA: diga seu clima, gostos e nível de picância — ela cruza tags, notas e parecidas pra achar o que você nunca viu.
-          </p>
-        </div>
-        <button
-          onClick={() => go("assistant")}
-          className="bg-brand-gradient shrink-0 rounded-xl px-6 py-3 text-sm font-bold text-white shadow-lg shadow-violet-950/40 transition hover:brightness-110"
-        >
-          Pedir recomendação ✨
-        </button>
-      </div>
-    </section>
-  );
-}
-
-export function HomeView({ all, loading }: { all: WorkData[] | null; loading: boolean }) {
+export function HomeView() {
+  const [data, setData] = useState<{
+    launches: WorkData[]; hits: WorkData[]; bestsellers: WorkData[]; monthLaunches: WorkData[]; news: NewsItem[]; counts: { total: number };
+  } | null>(null);
+  const [loading, setLoading] = useState(true);
   const openExplore = usePortal((s) => s.openExplore);
+  const go = usePortal((s) => s.go);
+  const user = usePortal((s) => s.user);
 
-  const sections = useMemo(() => {
-    if (!all) return null;
-    const byPop = [...all].sort((a, b) => (b.popularity ?? 0) - (a.popularity ?? 0));
-    const byFav = [...all].sort((a, b) => (b.favourites ?? 0) - (a.favourites ?? 0));
-    const byScore = [...all].sort((a, b) => (b.avgScore ?? 0) - (a.avgScore ?? 0));
-    const recent = all
-      .filter((w) => w.startDate && w.startDate >= "2024-06")
-      .sort((a, b) => (b.startDate ?? "").localeCompare(a.startDate ?? ""));
-    return {
-      hero: byPop,
-      trending: byPop.slice(0, 22),
-      recent: recent.slice(0, 20),
-      manhwa: all.filter((w) => w.type === "manhwa").sort((a, b) => (b.popularity ?? 0) - (a.popularity ?? 0)).slice(0, 20),
-      spicy: all.filter((w) => w.tags.some((t) => t.name === "Nudity")).sort((a, b) => (b.favourites ?? 0) - (a.favourites ?? 0)).slice(0, 20),
-      ln: all.filter((w) => w.type === "lightnovel").sort((a, b) => (b.favourites ?? 0) - (a.favourites ?? 0)).slice(0, 18),
-      anime: all.filter((w) => w.type === "anime").sort((a, b) => (b.popularity ?? 0) - (a.popularity ?? 0)).slice(0, 20),
-      masterpieces: byScore.filter((w) => (w.avgScore ?? 0) >= 82).slice(0, 20),
-    };
-  }, [all]);
+  useEffect(() => {
+    fetch("/api/sections")
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.ok) setData(d);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  const catChips = [
+    { label: "Mangás", type: "manga", emoji: "📖" },
+    { label: "Manhwas", type: "manhwa", emoji: "🇰🇷" },
+    { label: "Manhuas", type: "manhua", emoji: "🇨🇳" },
+    { label: "Light Novels", type: "lightnovel", emoji: "📚" },
+    { label: "Animes", type: "anime", emoji: "🎬" },
+    { label: "Dramas", type: "drama", emoji: "📺" },
+    { label: "Ecchi", type: "all", classification: "suggestive", emoji: "🔥" },
+  ];
 
   return (
-    <div className="space-y-9">
-      {loading || !sections ? (
-        <div className="shimmer h-[380px] rounded-2xl sm:h-[460px] md:h-[500px]" />
-      ) : (
-        <Hero works={sections.hero} />
+    <div className="flex flex-col gap-8">
+      <HypeCarousel />
+
+      {/* chips de categoria */}
+      <div className="no-scrollbar flex gap-2 overflow-x-auto pb-1">
+        {catChips.map((c) => (
+          <button
+            key={c.label}
+            onClick={() =>
+              openExplore({
+                type: c.type,
+                ...(c.classification ? { classification: c.classification } : { classification: "all" }),
+                q: "",
+              })
+            }
+            className="flex shrink-0 items-center gap-1.5 rounded-full border border-border bg-card px-4 py-2 text-sm font-bold transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md"
+          >
+            <span>{c.emoji}</span> {c.label}
+          </button>
+        ))}
+      </div>
+
+      {loading && (
+        <div className="flex items-center gap-3 rounded-2xl border border-border bg-card p-5 text-sm text-muted-foreground">
+          <Sparkles className="h-5 w-5 animate-pulse text-primary" /> Carregando o catálogo real...
+        </div>
       )}
 
-      <CategoryChips />
-
-      {loading || !sections ? (
-        <div className="space-y-10">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="space-y-3">
-              <div className="shimmer h-6 w-56 rounded" />
-              <div className="flex gap-3 overflow-hidden">
-                {Array.from({ length: 7 }).map((_, j) => (
-                  <div key={j} className="shimmer aspect-[2/3] w-[132px] shrink-0 rounded-xl sm:w-[152px]" />
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : (
+      {data && (
         <>
-          <WorkRow id="row-trending" title="Em alta agora" subtitle="o que a comunidade inteira está lendo e assistindo" works={sections.trending} />
-          <AiBanner />
-          {sections.recent.length > 0 && (
-            <WorkRow id="row-recent" title="Lançamentos recentes" subtitle="obras novas (2024+) que estão bombando" works={sections.recent} />
-          )}
-          <WorkRow id="row-manhwa" title="Manhwas em ascensão" subtitle="vertical, colorido e viciante — o jeito coreano" works={sections.manhwa} />
-          <div className="grid gap-9 lg:grid-cols-2">
-            <WorkRow id="row-spicy" title="🔥 Sensorial em alta" subtitle="ecchi & fanservice de qualidade, escolhidos por favoritos" works={sections.spicy} />
-            <WorkRow id="row-ln" title="Light novels imperdíveis" subtitle="as fontes literárias dos seus animes favoritos" works={sections.ln} />
-          </div>
-          <WorkRow id="row-anime" title="Animes em alta" subtitle="da temporada e clássicos eternos" works={sections.anime} />
-          <WorkRow id="row-master" title="Obras-primas (nota 82+)" subtitle="o pódio absoluto de avaliação" works={sections.masterpieces} />
+          {data.news?.length > 0 && <NewsTeaser news={data.news} />}
 
-          <section className="fade-up rounded-2xl border border-white/8 bg-card/60 p-5 sm:p-6">
-            <div className="flex flex-wrap items-center justify-between gap-4">
-              <div>
-                <h3 className="text-lg font-extrabold">Quer filtrar por gênero ou tag?</h3>
-                <p className="text-sm text-muted-foreground">
-                  Ação, Romance, Psicológico, Isekai, Gore, Yuri... monte sua busca no Explorar com dezenas de tags reais.
-                </p>
-              </div>
-              <button
-                onClick={() => openExplore({})}
-                className="rounded-xl border border-primary/40 bg-primary/10 px-5 py-2.5 text-sm font-bold text-violet-200 transition hover:bg-primary/20"
-              >
-                Abrir explorador completo
-              </button>
-            </div>
+          <section className="cv-auto">
+            <SectionHeader icon={<Rocket className="h-4 w-4" />} title="Lançamentos Recentes" sub="Estreias fresquinhas dos últimos 90 dias" action={
+              <button onClick={() => openExplore({ sort: "new", q: "" })} className="flex items-center gap-1 text-xs font-bold text-primary hover:underline">ver todos <ChevronRight className="h-3.5 w-3.5" /></button>
+            } />
+            <CardRow items={data.launches} />
           </section>
+
+          <section className="cv-auto">
+            <SectionHeader icon={<Flame className="h-4 w-4" />} title="Bombando: Novos Hits" sub="Em andamento, poucos capítulos publicados e já febre entre os leitores" action={
+              <button onClick={() => openExplore({ sort: "new", status: "RELEASING", q: "" })} className="flex items-center gap-1 text-xs font-bold text-primary hover:underline">explorar <ChevronRight className="h-3.5 w-3.5" /></button>
+            } />
+            <CardRow items={data.hits} />
+          </section>
+
+          <section className="cv-auto">
+            <SectionHeader icon={<Trophy className="h-4 w-4" />} title="Top Popularidade (proxy de vendas)" sub="As obras mais favoritadas — o mais perto de um ranking de vendas global" action={
+              <button onClick={() => openExplore({ sort: "favorites", q: "" })} className="flex items-center gap-1 text-xs font-bold text-primary hover:underline">ranking completo <ChevronRight className="h-3.5 w-3.5" /></button>
+            } />
+            <CardRow items={data.bestsellers} ranks />
+          </section>
+
+          {data.monthLaunches.length > 0 && (
+            <section className="cv-auto">
+              <SectionHeader icon={<CalendarDays className="h-4 w-4" />} title="Agenda do Mês" sub="Estreias e retornos programados para este mês" action={
+                <button onClick={() => go("calendar")} className="flex items-center gap-1 text-xs font-bold text-primary hover:underline">abrir calendário <ChevronRight className="h-3.5 w-3.5" /></button>
+              } />
+              <CardRow items={data.monthLaunches} />
+            </section>
+          )}
         </>
+      )}
+
+      {/* banner da Aoi */}
+      <section className="relative overflow-hidden rounded-3xl bg-hero-grad p-6 text-white sm:p-8">
+        <div className="relative z-10 flex flex-col items-start gap-4 sm:flex-row sm:items-center">
+          <span className="waifu-avatar flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-white/15 text-3xl backdrop-blur">🌸</span>
+          <div className="flex-1">
+            <p className="text-[11px] font-bold uppercase tracking-widest text-white/70">Sua waifu curadora</p>
+            <h3 className="text-xl font-black sm:text-2xl">Aoi-chan te ajuda a achar a próxima obsessão</h3>
+            <p className="mt-1 max-w-xl text-sm text-white/80">
+              Diga o que você sente namorar: "quero ecchi com boa história", "me dá manhwa de vingança" — ela garimpa no catálogo real e responde com carinho. {user ? "Você já tem a Aoi disponível no menu!" : "Sem cadastro também funciona."}
+            </p>
+          </div>
+          <button onClick={() => go("assistant")} className="bg-white px-5 py-2.5 text-sm font-black text-slate-900 shadow-xl transition hover:scale-105">
+            Falar com a Aoi
+          </button>
+        </div>
+        <div className="pointer-events-none absolute -right-10 -top-16 h-56 w-56 rounded-full bg-white/10 blur-2xl" />
+        <div className="pointer-events-none absolute -bottom-20 right-32 h-44 w-44 rounded-full bg-white/10 blur-2xl" />
+      </section>
+
+      {/* stats do catálogo */}
+      {data && (
+        <p className="flex items-center justify-center gap-2 text-center text-[11px] text-muted-foreground">
+          <Gauge className="h-3.5 w-3.5" />
+          Catálogo com {data.counts.total.toLocaleString("pt-BR")} obras reais · atualização automática a cada 30 min · busque mais via Explorar
+        </p>
       )}
     </div>
   );

@@ -1,17 +1,67 @@
-// Servidor: acesso ao banco de obras + cálculo de similaridade
+// Servidor: acesso ao banco de obras (cache em memória) + filtros + similaridade
 import { db } from "@/lib/db";
-import { parseWork, type WorkData } from "@/lib/types";
+import { parseWork, type WorkData, type Classification } from "@/lib/types";
 
-export async function getAllWorks(): Promise<WorkData[]> {
+// ---------- Cache em memória (evita reler 10k+ rows do SQLite a cada request) ----------
+interface Cache {
+  works: WorkData[];
+  builtAt: number;
+  maxUpdatedAt: number;
+}
+
+const g = globalThis as unknown as { __ovCache?: Cache };
+const TTL = 120_000; // 2 min
+
+async function buildCache(): Promise<Cache> {
+  const agg = await db.work.aggregate({ _max: { createdAt: true } });
+  const maxUpdatedAt = agg._max.createdAt?.getTime() ?? 0;
   const rows = await db.work.findMany();
-  return rows.map(parseWork);
+  const works = rows.map(parseWork);
+  return { works, builtAt: Date.now(), maxUpdatedAt };
 }
 
-export async function getWorkById(id: string): Promise<WorkData | null> {
-  const row = await db.work.findUnique({ where: { id } });
-  return row ? parseWork(row) : null;
+/** Pool completo de obras — exclui SEMPRE conteúdo adulto do pool público.
+ *  Conteúdo adulto só entra no pool quando `adult=true` (usuário com modo +18 ativo e rota da zona adulta). */
+export async function getAllWorks(adult = false): Promise<WorkData[]> {
+  let cache = g.__ovCache;
+  if (!cache || Date.now() - cache.builtAt > TTL) {
+    cache = await buildCache();
+    g.__ovCache = cache;
+  }
+  return adult ? cache.works : cache.works.filter((w) => w.classification !== "adult");
 }
 
+/** Invalida o cache após seeds/cron */
+export function invalidateWorksCache() {
+  g.__ovCache = undefined;
+}
+
+export async function getWorkById(id: string, adult = false): Promise<WorkData | null> {
+  const pool = await getAllWorks(adult);
+  return pool.find((w) => w.id === id) ?? null;
+}
+
+// ---------- Classificação ----------
+/** Deriva a classificação de conteúdo a partir dos dados da AniList */
+export function classify(m: { isAdult?: boolean; format?: string | null; tags?: { name: string; rank: number }[]; genres?: string[] }): { classification: Classification; adultTags: string[] } {
+  if (m.isAdult) {
+    const tags = (m.tags ?? []).map((t) => t.name.toLowerCase());
+    const adultTags: string[] = [];
+    if (m.format === "DOUJIN" || tags.some((t) => t.includes("doujin"))) adultTags.push("Doujin");
+    if (tags.some((t) => t.includes("hentai") || t.includes("sex"))) adultTags.push("Hentai");
+    if (!adultTags.length) adultTags.push("+18");
+    adultTags.push("Adulto");
+    return { classification: "adult", adultTags: [...new Set(adultTags)] };
+  }
+  const tagRanks = new Map((m.tags ?? []).map((t) => [t.name, t.rank]));
+  const ecchi = tagRanks.get("Ecchi") ?? 0;
+  const nudity = tagRanks.get("Nudity") ?? 0;
+  const sensual = tagRanks.get("Succubus") ?? 0;
+  if (ecchi >= 30 || nudity >= 40 || sensual >= 50) return { classification: "suggestive", adultTags: [] };
+  return { classification: "safe", adultTags: [] };
+}
+
+// ---------- Similaridade ----------
 function tagScore(a: WorkData, b: WorkData): number {
   const bTags = new Map(b.tags.map((t) => [t.name, t.rank]));
   let s = 0;
@@ -39,7 +89,6 @@ export function computeRelated(target: WorkData, pool: WorkData[]): RelatedBundl
     let s = tagScore(target, w) * 1.15 + genreScore(target, w);
     if (w.type === target.type) s += 0.4;
     if (w.country === target.country) s += 0.25;
-    // normaliza levemente por qualidade para desempate
     s += ((w.avgScore ?? 60) - 60) / 100;
     return { w, s };
   });
@@ -48,9 +97,7 @@ export function computeRelated(target: WorkData, pool: WorkData[]): RelatedBundl
   const also = scored.slice(12, 24).map((x) => x.w);
 
   const authorNames = new Set(
-    target.authors
-      .map((a) => a.name)
-      .filter(Boolean)
+    target.authors.map((a) => a.name).filter(Boolean)
   );
   const byAuthorMap = new Map<string, WorkData[]>();
   for (const a of authorNames) {
@@ -63,12 +110,14 @@ export function computeRelated(target: WorkData, pool: WorkData[]): RelatedBundl
   return { similar, also, byAuthor: [...byAuthorMap.entries()].map(([author, works]) => ({ author, works })) };
 }
 
+// ---------- Filtros ----------
 export interface WorkFilters {
   type?: string;
   genre?: string;
   tag?: string;
   status?: string;
   lang?: string;
+  classification?: string; // all | safe | suggestive (adult tratado à parte)
   q?: string;
   sort?: string;
   page?: number;
@@ -81,6 +130,7 @@ export function filterWorks(all: WorkData[], f: WorkFilters): { items: WorkData[
   if (f.genre && f.genre !== "all") list = list.filter((w) => w.genres.includes(f.genre!));
   if (f.tag && f.tag !== "all") list = list.filter((w) => w.tags.some((t) => t.name === f.tag));
   if (f.status && f.status !== "all") list = list.filter((w) => w.status === f.status);
+  if (f.classification && f.classification !== "all") list = list.filter((w) => w.classification === f.classification);
   if (f.q) {
     const q = f.q.toLowerCase().trim();
     list = list.filter(
@@ -93,7 +143,6 @@ export function filterWorks(all: WorkData[], f: WorkFilters): { items: WorkData[
     );
   }
   if (f.lang && f.lang !== "all") {
-    // filtro simples: PT-BR/EN via heurística de idiomas
     list = list.filter((w) => {
       const langs = quickLangs(w);
       return langs.includes(f.lang!);
@@ -111,8 +160,8 @@ export function filterWorks(all: WorkData[], f: WorkFilters): { items: WorkData[
       default: return (b.popularity ?? 0) - (a.popularity ?? 0);
     }
   });
-  const page = f.page ?? 1;
-  const perPage = f.perPage ?? 24;
+  const page = Math.max(1, f.page ?? 1);
+  const perPage = Math.min(120, Math.max(6, f.perPage ?? 24));
   const total = list.length;
   return { items: list.slice((page - 1) * perPage, page * perPage), total };
 }
@@ -123,11 +172,17 @@ export function quickLangs(w: WorkData): string[] {
   if (w.country === "KR") langs.add("KO");
   if (w.country === "CN" || w.country === "TW") langs.add("ZH");
   if ((w.popularity ?? 0) >= 100000) langs.add("EN");
-  if ((w.popularity ?? 0) >= 200000 || w.type === "anime") langs.add("PT-BR");
+  if ((w.popularity ?? 0) >= 200000 || w.type === "anime" || w.type === "drama") langs.add("PT-BR");
   return [...langs];
 }
 
-export function getFacets(all: WorkData[]) {
+// ---------- Facets (cacheado junto com o pool) ----------
+const gFacets = globalThis as unknown as { __ovFacets?: { genres: { name: string; count: number }[]; tags: { name: string; count: number }[]; at: number } };
+
+export async function getFacets(adult = false) {
+  const gF = gFacets.__ovFacets;
+  if (gF && Date.now() - gF.at < TTL) return gF;
+  const all = await getAllWorks(adult);
   const genreCount = new Map<string, number>();
   const tagCount = new Map<string, number>();
   for (const w of all) {
@@ -138,5 +193,13 @@ export function getFacets(all: WorkData[]) {
   }
   const genres = [...genreCount.entries()].sort((a, b) => b[1] - a[1]).map(([name, count]) => ({ name, count }));
   const tags = [...tagCount.entries()].sort((a, b) => b[1] - a[1]).slice(0, 80).map(([name, count]) => ({ name, count }));
-  return { genres, tags };
+  const result = { genres, tags, at: Date.now() };
+  gFacets.__ovFacets = result;
+  return result;
+}
+
+// ---------- Catálogo para a IA (respeita gating) ----------
+export async function catalogForAI(adult = false): Promise<WorkData[]> {
+  const all = await getAllWorks(adult);
+  return all;
 }

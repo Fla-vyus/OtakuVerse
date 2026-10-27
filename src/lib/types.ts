@@ -1,5 +1,6 @@
 // Tipos compartilhados entre servidor e cliente
-export type WorkType = "manga" | "manhwa" | "manhua" | "lightnovel" | "anime";
+export type WorkType = "manga" | "manhwa" | "manhua" | "lightnovel" | "anime" | "drama";
+export type Classification = "safe" | "suggestive" | "adult";
 
 export interface TagRef {
   name: string;
@@ -20,6 +21,16 @@ export interface ExtLink {
   icon?: string | null;
 }
 
+export interface MagazineInfo {
+  name: string;
+  publisher?: string;
+  demographic?: string; // shonen | seinen | shojo | josei | web
+  schedule?: string; // "Semanal (quinta)" etc
+  accepts?: string[]; // gêneros aceitos pela revista
+  famous?: string[]; // obras famosas da revista
+  source?: string; // curado | derivado
+}
+
 export interface WorkData {
   id: string;
   malId?: number | null;
@@ -32,6 +43,7 @@ export interface WorkData {
   synopsis?: string | null;
   synopsisPT?: string | null;
   cover: string;
+  coverAlt?: string | null;
   coverColor?: string | null;
   banner?: string | null;
   status?: string | null;
@@ -43,6 +55,8 @@ export interface WorkData {
   endDate?: string | null;
   country?: string | null;
   isAdult: boolean;
+  classification: Classification;
+  adultTags?: string[];
   genres: string[];
   tags: TagRef[];
   avgScore?: number | null;
@@ -50,6 +64,8 @@ export interface WorkData {
   favourites?: number | null;
   authors: AuthorRef[];
   extLinks: ExtLink[];
+  magazine?: MagazineInfo | null;
+  network?: string | null;
   source?: string | null;
   siteUrl?: string | null;
   lastUpdate?: number | null;
@@ -63,6 +79,7 @@ export const TYPE_LABEL: Record<WorkType, string> = {
   manhua: "Manhua",
   lightnovel: "Light Novel",
   anime: "Anime",
+  drama: "Drama",
 };
 
 export const STATUS_LABEL: Record<string, string> = {
@@ -74,12 +91,23 @@ export const STATUS_LABEL: Record<string, string> = {
 };
 
 export const TYPE_COLORS: Record<WorkType, string> = {
-  manga: "bg-orange-500/15 text-orange-300 border-orange-500/30",
-  manhwa: "bg-purple-500/15 text-purple-300 border-purple-500/30",
-  manhua: "bg-amber-500/15 text-amber-300 border-amber-500/30",
-  lightnovel: "bg-cyan-500/15 text-cyan-300 border-cyan-500/30",
-  anime: "bg-pink-500/15 text-pink-300 border-pink-500/30",
+  manga: "bg-orange-100 text-orange-700 border-orange-300 dark:bg-orange-500/15 dark:text-orange-300 dark:border-orange-500/30",
+  manhwa: "bg-purple-100 text-purple-700 border-purple-300 dark:bg-purple-500/15 dark:text-purple-300 dark:border-purple-500/30",
+  manhua: "bg-amber-100 text-amber-700 border-amber-300 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/30",
+  lightnovel: "bg-cyan-100 text-cyan-700 border-cyan-300 dark:bg-cyan-500/15 dark:text-cyan-300 dark:border-cyan-500/30",
+  anime: "bg-sky-100 text-sky-700 border-sky-300 dark:bg-sky-500/15 dark:text-sky-300 dark:border-sky-500/30",
+  drama: "bg-rose-100 text-rose-700 border-rose-300 dark:bg-rose-500/15 dark:text-rose-300 dark:border-rose-500/30",
 };
+
+/** Rótulo do nível de conteúdo — usado no card/detalhe */
+export const CLASSIFICATION_LABEL: Record<Classification, string> = {
+  safe: "Livre",
+  suggestive: "Ecchi/Sensorial",
+  adult: "+18",
+};
+
+/** Tags adultas canônicas (zona adulta) */
+export const ADULT_TAGS = ["Hentai", "Doujin", "+18", "Adulto"] as const;
 
 export function parseWork(raw: any): WorkData {
   const safeJson = (v: any, fb: any) => {
@@ -101,6 +129,7 @@ export function parseWork(raw: any): WorkData {
     synopsis: raw.synopsis ?? null,
     synopsisPT: raw.synopsisPT ?? null,
     cover: raw.cover ?? "",
+    coverAlt: raw.coverAlt ?? null,
     coverColor: raw.coverColor ?? null,
     banner: raw.banner ?? null,
     status: raw.status ?? null,
@@ -112,6 +141,8 @@ export function parseWork(raw: any): WorkData {
     endDate: raw.endDate ?? null,
     country: raw.country ?? null,
     isAdult: !!raw.isAdult,
+    classification: (raw.classification ?? (raw.isAdult ? "adult" : "safe")) as Classification,
+    adultTags: safeJson(raw.adultTags, []),
     genres: safeJson(raw.genres, []),
     tags: safeJson(raw.tags, []),
     avgScore: raw.avgScore ?? null,
@@ -119,6 +150,8 @@ export function parseWork(raw: any): WorkData {
     favourites: raw.favourites ?? null,
     authors: safeJson(raw.authors, []),
     extLinks: safeJson(raw.extLinks, []),
+    magazine: safeJson(raw.magazine, null),
+    network: raw.network ?? null,
     source: raw.source ?? null,
     siteUrl: raw.siteUrl ?? null,
     lastUpdate: raw.lastUpdate ?? null,
@@ -177,6 +210,8 @@ const SITE_LANG_MAP: Record<string, string[]> = {
   "iQ.com": ["ZH", "EN"],
   MuseAsia: ["EN"],
   "Ani-One": ["EN"],
+  Viki: ["PT-BR*"],
+  "Viki (Rakuten)": ["PT-BR*"],
 };
 
 export function getLanguages(w: WorkData): LangInfo[] {
@@ -184,7 +219,7 @@ export function getLanguages(w: WorkData): LangInfo[] {
   if (w.country && COUNTRY_LANG[w.country]) out.push(COUNTRY_LANG[w.country]);
 
   const set = new Map<string, LangInfo>();
-  const hasType = w.type !== "anime";
+  const hasType = w.type !== "anime" && w.type !== "drama";
   for (const l of w.extLinks ?? []) {
     const langs = SITE_LANG_MAP[l.site];
     if (!langs) continue;
@@ -203,7 +238,7 @@ export function getLanguages(w: WorkData): LangInfo[] {
   if (hasType && popular && !set.has("EN")) set.set("EN", { code: "EN", label: "Inglês", status: "oficial" });
   if (hasType && (w.popularity ?? 0) >= 200000 && !set.has("PT-BR"))
     set.set("PT-BR", { code: "PT-BR", label: "Português (BR)", status: "provavel" });
-  if (w.type === "anime" && !set.has("PT-BR"))
+  if ((w.type === "anime" || w.type === "drama") && !set.has("PT-BR"))
     set.set("PT-BR", { code: "PT-BR", label: "Português (BR)", status: "streaming" });
 
   for (const v of set.values()) out.push(v);
@@ -233,6 +268,19 @@ export function mainAuthors(w: WorkData): AuthorRef[] {
   return [...(primary.length ? primary : w.authors.slice(0, 2)), ...rest];
 }
 
+/** Nomes alternativos da obra (não traduzimos nada — mantemos originais) */
+export function altNames(w: WorkData): { label: string; value: string }[] {
+  const out: { label: string; value: string }[] = [];
+  if (w.titleNative && w.titleNative !== w.title) out.push({ label: "Nome nativo", value: w.titleNative });
+  if (w.titleEn && w.titleEn !== w.title) out.push({ label: "Nome em inglês", value: w.titleEn });
+  for (const s of w.synonyms ?? []) {
+    if (s && s !== w.title && s !== w.titleEn && s !== w.titleNative && !out.some((o) => o.value.toLowerCase() === s.toLowerCase())) {
+      out.push({ label: "Outro nome", value: s });
+    }
+  }
+  return out;
+}
+
 // ---------- Próximo capítulo ----------
 export interface NextRelease {
   label: string;
@@ -243,7 +291,7 @@ export interface NextRelease {
 
 export function getNextRelease(w: WorkData): NextRelease | null {
   if (w.status === "FINISHED") {
-    const qtd = w.type === "anime" ? `${w.episodes ?? "?"} eps` : `${w.chapters ?? "?"} caps`;
+    const qtd = w.type === "anime" ? `${w.episodes ?? "?"} eps` : w.type === "drama" ? `${w.episodes ?? "?"} eps` : `${w.chapters ?? "?"} caps`;
     return { label: "Concluído", detail: qtd, kind: "concluido" };
   }
   if (w.status === "HIATUS") return { label: "Em hiato", detail: "sem previsão oficial", kind: "hiatus" };
@@ -261,10 +309,9 @@ export function getNextRelease(w: WorkData): NextRelease | null {
       kind: "anime",
     };
   }
-  if (w.status === "RELEASING" && w.type !== "anime" && w.lastUpdate) {
+  if (w.status === "RELEASING" && w.type !== "anime" && w.type !== "drama" && w.lastUpdate) {
     const last = new Date(w.lastUpdate * 1000);
-    const cadence = w.country === "KR" || (w.tags ?? []).some((t) => t.name === "Long Strip") ? 7 : 7;
-    const next = new Date(last.getTime() + cadence * 86400000);
+    const next = new Date(last.getTime() + 7 * 86400000);
     const now = Date.now();
     const diffDays = Math.round((next.getTime() - now) / 86400000);
     if (diffDays <= 0) {
@@ -302,5 +349,5 @@ export function fmtNum(n?: number | null): string {
 }
 
 export const COUNTRY_FLAG: Record<string, string> = {
-  JP: "🇯🇵", KR: "🇰🇷", CN: "🇨🇳", TW: "🇹🇼",
+  JP: "🇯🇵", KR: "🇰🇷", CN: "🇨🇳", TW: "🇹🇼", TH: "🇹🇭", ES: "🇪🇸",
 };

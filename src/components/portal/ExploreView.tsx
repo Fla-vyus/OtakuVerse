@@ -1,261 +1,283 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Search, SlidersHorizontal, Globe, Loader2, X, Sparkles } from "lucide-react";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Search, SlidersHorizontal, ChevronLeft, ChevronRight, Compass, Lock, Flame } from "lucide-react";
 import { usePortal, DEFAULT_FILTERS } from "./store";
-import { WorkCard, CardSkeleton } from "./WorkCard";
+import { CardGrid } from "./WorkCard";
+import { Input } from "@/components/ui/input";
 import type { WorkData } from "@/lib/types";
 
-interface Facets {
-  genres: { name: string; count: number }[];
-  tags: { name: string; count: number }[];
-}
-
-const TYPE_OPTIONS = [
-  { value: "all", label: "Todos os tipos" },
-  { value: "manga", label: "Mangá 🇯🇵" },
-  { value: "manhwa", label: "Manhwa 🇰🇷" },
-  { value: "manhua", label: "Manhua 🇨🇳" },
-  { value: "lightnovel", label: "Light Novel" },
-  { value: "anime", label: "Anime" },
+const TYPES = [
+  { v: "all", label: "Todos" },
+  { v: "manga", label: "Mangá" },
+  { v: "manhwa", label: "Manhwa" },
+  { v: "manhua", label: "Manhua" },
+  { v: "lightnovel", label: "Light Novel" },
+  { v: "anime", label: "Anime" },
+  { v: "drama", label: "Drama" },
 ];
 
-const SORT_OPTIONS = [
-  { value: "popular", label: "Mais populares" },
-  { value: "score", label: "Melhor avaliados" },
-  { value: "favorites", label: "Mais favoritados" },
-  { value: "new", label: "Lançamentos recentes" },
-  { value: "chapters", label: "Mais capítulos" },
-  { value: "title", label: "Nome (A–Z)" },
+const SORTS = [
+  { v: "popular", label: "Mais populares" },
+  { v: "score", label: "Melhores notas" },
+  { v: "favorites", label: "Mais favoritados" },
+  { v: "new", label: "Mais recentes" },
+  { v: "chapters", label: "Mais capítulos" },
+  { v: "title", label: "A–Z" },
 ];
 
-const STATUS_OPTIONS = [
-  { value: "all", label: "Qualquer status" },
-  { value: "RELEASING", label: "Em lançamento" },
-  { value: "FINISHED", label: "Concluídos" },
-  { value: "HIATUS", label: "Em hiato" },
-  { value: "NOT_YET_RELEASED", label: "Não lançados" },
+const STATUSES = [
+  { v: "all", label: "Qualquer status" },
+  { v: "RELEASING", label: "Em lançamento" },
+  { v: "FINISHED", label: "Concluído" },
+  { v: "HIATUS", label: "Em hiato" },
+  { v: "NOT_YET_RELEASED", label: "Não lançado" },
 ];
+
+const PER_PAGE = 60;
 
 export function ExploreView() {
   const filters = usePortal((s) => s.filters);
   const setFilters = usePortal((s) => s.setFilters);
-  const openWork = usePortal((s) => s.openWork);
-
-  const [items, setItems] = useState<WorkData[] | null>(null);
+  const user = usePortal((s) => s.user);
+  const [items, setItems] = useState<WorkData[]>([]);
   const [total, setTotal] = useState(0);
-  const [facets, setFacets] = useState<Facets | null>(null);
   const [page, setPage] = useState(1);
+  const [facets, setFacets] = useState<{ genres: { name: string; count: number }[]; tags: { name: string; count: number }[] }>({ genres: [], tags: [] });
   const [loading, setLoading] = useState(true);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [liveResults, setLiveResults] = useState<WorkData[] | null>(null); // busca ao vivo AniList
+  const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const topRef = useRef<HTMLDivElement>(null);
 
-  const [liveMode, setLiveMode] = useState(false);
-  const [liveWorks, setLiveWorks] = useState<WorkData[] | null>(null);
-  const [liveLoading, setLiveLoading] = useState(false);
-
-  const qs = useMemo(() => {
-    const p = new URLSearchParams();
-    Object.entries(filters).forEach(([k, v]) => {
-      if (v && v !== "all") p.set(k, v);
-    });
-    p.set("page", String(page));
-    p.set("perPage", "24");
-    return p.toString();
-  }, [filters, page]);
+  const fetchPage = useCallback(
+    (p: number) => {
+      setLoading(true);
+      const params = new URLSearchParams({
+        page: String(p),
+        perPage: String(PER_PAGE),
+      });
+      if (filters.type !== "all") params.set("type", filters.type);
+      if (filters.genre !== "all") params.set("genre", filters.genre);
+      if (filters.tag !== "all") params.set("tag", filters.tag);
+      if (filters.status !== "all") params.set("status", filters.status);
+      if (filters.sort !== "popular") params.set("sort", filters.sort);
+      if (filters.classification !== "all") params.set("classification", filters.classification);
+      if (filters.q.trim()) params.set("q", filters.q.trim());
+      fetch(`/api/works?${params.toString()}`)
+        .then((r) => r.json())
+        .then((d) => {
+          if (d.ok) {
+            setItems(d.items);
+            setTotal(d.total);
+            if (d.facets) setFacets(d.facets);
+          }
+        })
+        .catch(() => {})
+        .finally(() => setLoading(false));
+    },
+    [filters]
+  );
 
   useEffect(() => {
     setPage(1);
-  }, [filters.type, filters.genre, filters.tag, filters.status, filters.sort, filters.q]);
+  }, [filters]);
 
   useEffect(() => {
-    let alive = true;
-    setLoading(true);
-    fetch(`/api/works?${qs}`)
-      .then((r) => r.json())
-      .then((d) => {
-        if (!alive) return;
-        if (d.ok) {
-          setItems(d.items);
-          setTotal(d.total);
-          if (d.facets) setFacets(d.facets);
-        }
-      })
-      .catch(() => {})
-      .finally(() => alive && setLoading(false));
-    return () => { alive = false; };
-  }, [qs]);
+    fetchPage(page);
+    topRef.current?.scrollIntoView({ behavior: "instant", block: "start" });
+  }, [page, fetchPage]);
 
-  const runLive = useCallback(async () => {
-    setLiveLoading(true);
-    setLiveMode(true);
-    try {
-      const res = await fetch("/api/discover", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ q: filters.q, type: filters.type === "anime" ? "ANIME" : filters.type === "all" ? undefined : "MANGA" }),
-      });
-      const d = await res.json();
-      if (d.ok) {
-        setLiveWorks(d.works);
-        setTotal(d.works.length);
-      }
-    } catch {
-      // mantém resultados locais
-    } finally {
-      setLiveLoading(false);
-    }
-  }, [filters.q, filters.type]);
+  // busca ao vivo na AniList quando há texto e poucos resultados locais
+  useEffect(() => {
+    if (debounce.current) clearTimeout(debounce.current);
+    setLiveResults(null);
+    const q = filters.q.trim();
+    if (q.length < 3) return;
+    debounce.current = setTimeout(() => {
+      fetch(`/api/discover?q=${encodeURIComponent(q)}`)
+        .then((r) => r.json())
+        .then((d) => {
+          if (d.ok && Array.isArray(d.items) && d.items.length) setLiveResults(d.items.slice(0, 12));
+        })
+        .catch(() => {});
+    }, 400);
+    return () => {
+      if (debounce.current) clearTimeout(debounce.current);
+    };
+  }, [filters.q]);
 
+  const totalPages = Math.max(1, Math.ceil(total / PER_PAGE));
   const activeChips = useMemo(() => {
     const chips: { label: string; clear: () => void }[] = [];
     if (filters.q) chips.push({ label: `"${filters.q}"`, clear: () => setFilters({ q: "" }) });
-    if (filters.type !== "all") chips.push({ label: TYPE_OPTIONS.find((t) => t.value === filters.type)?.label ?? filters.type, clear: () => setFilters({ type: "all" }) });
+    if (filters.type !== "all") chips.push({ label: TYPES.find((t) => t.v === filters.type)?.label ?? filters.type, clear: () => setFilters({ type: "all" }) });
     if (filters.genre !== "all") chips.push({ label: filters.genre, clear: () => setFilters({ genre: "all" }) });
-    if (filters.tag !== "all") chips.push({ label: `tag: ${filters.tag}`, clear: () => setFilters({ tag: "all" }) });
-    if (filters.status !== "all") chips.push({ label: STATUS_OPTIONS.find((s) => s.value === filters.status)?.label ?? filters.status, clear: () => setFilters({ status: "all" }) });
+    if (filters.tag !== "all") chips.push({ label: filters.tag, clear: () => setFilters({ tag: "all" }) });
+    if (filters.status !== "all") chips.push({ label: STATUSES.find((s) => s.v === filters.status)?.label ?? filters.status, clear: () => setFilters({ status: "all" }) });
+    if (filters.classification !== "all") chips.push({ label: filters.classification === "suggestive" ? "Ecchi/Sensorial" : filters.classification, clear: () => setFilters({ classification: "all" }) });
     return chips;
   }, [filters, setFilters]);
 
-  const shown = liveMode && liveWorks ? liveWorks : items;
-
   return (
-    <div className="fade-in space-y-5">
-      <div>
-        <h1 className="text-2xl font-black tracking-tight sm:text-3xl">Explorar <span className="text-gradient">catálogo</span></h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Filtre por tipo, gêneros, tags, status e ordenação — {total} obra(s) encontrada(s).
-        </p>
-      </div>
-
-      {/* Barra de busca + filtros principais */}
-      <div className="space-y-3 rounded-2xl border border-white/8 bg-card/60 p-4">
-        <div className="flex flex-col gap-3 sm:flex-row">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={filters.q}
-              onChange={(e) => setFilters({ q: e.target.value })}
-              placeholder="Buscar por nome, autor, título alternativo..."
-              className="pl-9"
-              aria-label="Buscar obras"
-            />
-            {filters.q && (
-              <button onClick={() => setFilters({ q: "" })} aria-label="Limpar busca"
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-full p-1 text-muted-foreground hover:text-foreground">
-                <X className="h-3.5 w-3.5" />
-              </button>
-            )}
-          </div>
-          <Select value={filters.sort} onValueChange={(v) => setFilters({ sort: v })}>
-            <SelectTrigger className="w-full sm:w-[190px]" aria-label="Ordenação"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {SORT_OPTIONS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
-            </SelectContent>
-          </Select>
-          <Select value={filters.type} onValueChange={(v) => setFilters({ type: v })}>
-            <SelectTrigger className="w-full sm:w-[180px]" aria-label="Tipo"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {TYPE_OPTIONS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
-            </SelectContent>
-          </Select>
+    <div ref={topRef} className="flex flex-col gap-4">
+      {/* busca + ordenação */}
+      <div className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-4 sm:flex-row sm:items-center">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={filters.q}
+            onChange={(e) => setFilters({ q: e.target.value })}
+            placeholder="Buscar por título, autor, nome alternativo..."
+            className="pl-9"
+            aria-label="Buscar"
+          />
         </div>
-        <div className="flex flex-col gap-3 sm:flex-row">
-          <Select value={filters.genre} onValueChange={(v) => setFilters({ genre: v })}>
-            <SelectTrigger className="w-full sm:w-[200px]" aria-label="Gênero"><SelectValue /></SelectTrigger>
-            <SelectContent className="max-h-72">
-              <SelectItem value="all">Todos os gêneros</SelectItem>
-              {facets?.genres.map((g) => (
-                <SelectItem key={g.name} value={g.name}>{g.name} ({g.count})</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={filters.tag} onValueChange={(v) => setFilters({ tag: v })}>
-            <SelectTrigger className="w-full sm:w-[220px]" aria-label="Tag"><SelectValue /></SelectTrigger>
-            <SelectContent className="max-h-72 custom-scrollbar">
-              <SelectItem value="all">Todas as tags</SelectItem>
-              {facets?.tags.map((t) => (
-                <SelectItem key={t.name} value={t.name}>{t.name} ({t.count})</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={filters.status} onValueChange={(v) => setFilters({ status: v })}>
-            <SelectTrigger className="w-full sm:w-[190px]" aria-label="Status"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {STATUS_OPTIONS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        </div>
-
-        {activeChips.length > 0 && (
-          <div className="flex flex-wrap items-center gap-2 pt-1">
-            {activeChips.map((c, i) => (
-              <Badge key={i} variant="secondary" className="cursor-pointer gap-1 border border-primary/30 bg-primary/10 text-violet-200 hover:bg-primary/20"
-                onClick={c.clear}>
-                {c.label} <X className="h-3 w-3" />
-              </Badge>
+        <div className="flex items-center gap-2">
+          <select
+            value={filters.sort}
+            onChange={(e) => setFilters({ sort: e.target.value })}
+            className="h-10 rounded-xl border border-input bg-background px-3 text-sm font-semibold"
+            aria-label="Ordenar"
+          >
+            {SORTS.map((s) => (
+              <option key={s.v} value={s.v}>{s.label}</option>
             ))}
-            <button onClick={() => setFilters({ ...DEFAULT_FILTERS })} className="text-xs text-muted-foreground underline hover:text-foreground">
-              limpar tudo
-            </button>
-          </div>
-        )}
+          </select>
+          <button
+            onClick={() => setShowAdvanced((s) => !s)}
+            className={`flex h-10 items-center gap-1.5 rounded-xl border px-3 text-sm font-semibold transition ${showAdvanced ? "border-primary/40 bg-primary/10 text-primary" : "border-input bg-background"}`}
+          >
+            <SlidersHorizontal className="h-4 w-4" /> Filtros
+          </button>
+        </div>
       </div>
 
-      {/* Busca ao vivo AniList */}
-      <div className="flex flex-col items-start justify-between gap-2 rounded-xl border border-dashed border-primary/30 bg-primary/5 px-4 py-3 sm:flex-row sm:items-center">
-        <p className="text-[13px] text-muted-foreground">
-          <Sparkles className="mr-1 inline h-3.5 w-3.5 text-violet-300" />
-          Não achou no catálogo? Busque <b className="text-foreground">toda a base da AniList</b> ao vivo — o resultado entra no portal.
-        </p>
-        <Button size="sm" variant="outline" onClick={runLive} disabled={liveLoading}
-          className="border-primary/40 text-violet-200 hover:bg-primary/15 hover:text-white">
-          {liveLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Globe className="h-4 w-4" />}
-          {liveLoading ? "Consultando..." : "Buscar na AniList"}
-        </Button>
+      {/* chips de tipo rápidos */}
+      <div className="no-scrollbar flex gap-2 overflow-x-auto pb-1">
+        {TYPES.map((t) => (
+          <button
+            key={t.v}
+            onClick={() => setFilters({ type: t.v })}
+            className={`shrink-0 rounded-full px-4 py-1.5 text-sm font-bold transition ${
+              filters.type === t.v ? "bg-primary text-primary-foreground shadow" : "border border-border bg-card text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+        <button
+          onClick={() => setFilters({ classification: filters.classification === "suggestive" ? "all" : "suggestive" })}
+          className={`flex shrink-0 items-center gap-1 rounded-full px-4 py-1.5 text-sm font-bold transition ${
+            filters.classification === "suggestive" ? "bg-pink-600 text-white shadow" : "border border-border bg-card text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          <Flame className="h-3.5 w-3.5" /> Ecchi/Sensorial
+        </button>
       </div>
-      {liveMode && (
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <span>mostrando resultados ao vivo da AniList</span>
-          <button onClick={() => { setLiveMode(false); setLiveWorks(null); }} className="underline hover:text-foreground">
-            voltar ao catálogo local
+
+      {/* filtros avançados */}
+      {showAdvanced && (
+        <div className="grid gap-3 rounded-2xl border border-border bg-card p-4 sm:grid-cols-3">
+          <label className="text-xs font-bold text-muted-foreground">
+            Gênero
+            <select value={filters.genre} onChange={(e) => setFilters({ genre: e.target.value })} className="mt-1 h-10 w-full rounded-xl border border-input bg-background px-3 text-sm font-semibold text-foreground">
+              <option value="all">Todos os gêneros</option>
+              {facets.genres.map((g) => (
+                <option key={g.name} value={g.name}>{g.name} ({g.count})</option>
+              ))}
+            </select>
+          </label>
+          <label className="text-xs font-bold text-muted-foreground">
+            Tag (tema)
+            <select value={filters.tag} onChange={(e) => setFilters({ tag: e.target.value })} className="mt-1 h-10 w-full rounded-xl border border-input bg-background px-3 text-sm font-semibold text-foreground">
+              <option value="all">Todas as tags</option>
+              {facets.tags.map((t) => (
+                <option key={t.name} value={t.name}>{t.name} ({t.count})</option>
+              ))}
+            </select>
+          </label>
+          <label className="text-xs font-bold text-muted-foreground">
+            Status
+            <select value={filters.status} onChange={(e) => setFilters({ status: e.target.value })} className="mt-1 h-10 w-full rounded-xl border border-input bg-background px-3 text-sm font-semibold text-foreground">
+              {STATUSES.map((s) => (
+                <option key={s.v} value={s.v}>{s.label}</option>
+              ))}
+            </select>
+          </label>
+        </div>
+      )}
+
+      {/* chips ativos */}
+      {activeChips.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          {activeChips.map((c, i) => (
+            <button key={i} onClick={c.clear} className="flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1 text-xs font-bold text-primary transition hover:bg-primary/20">
+              {c.label} <span className="text-[10px]">✕</span>
+            </button>
+          ))}
+          <button onClick={() => setFilters({ ...DEFAULT_FILTERS })} className="text-xs font-semibold text-muted-foreground underline-offset-2 hover:underline">
+            limpar tudo
           </button>
         </div>
       )}
 
-      {/* Grid */}
-      {loading && !shown ? (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
-          {Array.from({ length: 18 }).map((_, i) => <CardSkeleton key={i} />)}
+      {/* resultados */}
+      <div className="flex items-baseline justify-between">
+        <p className="text-sm text-muted-foreground">
+          {loading ? "Buscando..." : `${total.toLocaleString("pt-BR")} obras encontradas`}
+          {!loading && total > 0 && <span className="ml-1">· página {page} de {totalPages.toLocaleString("pt-BR")}</span>}
+        </p>
+      </div>
+
+      {loading ? (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+          {Array.from({ length: PER_PAGE }).map((_, i) => (
+            <div key={i} className="space-y-2">
+              <div className="skel aspect-[2/3] w-full rounded-2xl" />
+              <div className="skel h-3.5 w-4/5 rounded" />
+              <div className="skel h-3 w-3/5 rounded" />
+            </div>
+          ))}
         </div>
+      ) : items.length > 0 ? (
+        <CardGrid items={items} />
       ) : (
-        <>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
-            {shown?.map((w) => <WorkCard key={w.id} work={w} />)}
-          </div>
-          {shown && shown.length === 0 && (
-            <div className="rounded-2xl border border-white/8 bg-card/60 p-10 text-center">
-              <SlidersHorizontal className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
-              <p className="font-bold">Nenhuma obra com esses filtros</p>
-              <p className="mt-1 text-sm text-muted-foreground">Tente limpar filtros ou buscar na AniList ao vivo acima.</p>
-            </div>
-          )}
-          {!liveMode && total > 24 && (
-            <div className="flex items-center justify-center gap-3 pt-2">
-              <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
-                Anterior
-              </Button>
-              <span className="text-sm text-muted-foreground">
-                Página {page} de {Math.ceil(total / 24)}
-              </span>
-              <Button variant="outline" size="sm" disabled={page * 24 >= total} onClick={() => setPage((p) => p + 1)}>
-                Próxima
-              </Button>
-            </div>
-          )}
-        </>
+        <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-border py-16 text-center">
+          <Compass className="h-8 w-8 text-muted-foreground" />
+          <p className="font-bold">Nada no catálogo local com esses filtros</p>
+          <p className="max-w-md text-xs text-muted-foreground">Tente limpar filtros ou busque ao vivo — se a obra existir na base global, a Aoi do sistema traz ela pra cá na hora.</p>
+        </div>
+      )}
+
+      {/* busca ao vivo */}
+      {liveResults && liveResults.length > 0 && (
+        <section className="rounded-2xl border border-primary/30 bg-primary/5 p-4">
+          <p className="mb-1 text-xs font-black uppercase tracking-wider text-primary">Resultados ao vivo da fonte global</p>
+          <p className="mb-3 text-[11px] text-muted-foreground">Encontrados fora do catálogo local — clique para abrir (a obra é adicionada ao OtakuVerse automaticamente).</p>
+          <CardGrid items={liveResults} />
+        </section>
+      )}
+
+      {/* paginação */}
+      {!loading && totalPages > 1 && (
+        <div className="flex items-center justify-center gap-2 pb-4">
+          <button
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={page <= 1}
+            className="flex h-9 items-center gap-1 rounded-xl border border-border bg-card px-3 text-sm font-bold disabled:opacity-40"
+          >
+            <ChevronLeft className="h-4 w-4" /> Anterior
+          </button>
+          <span className="px-3 text-sm font-bold text-muted-foreground">{page} / {totalPages.toLocaleString("pt-BR")}</span>
+          <button
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            disabled={page >= totalPages}
+            className="flex h-9 items-center gap-1 rounded-xl border border-border bg-card px-3 text-sm font-bold disabled:opacity-40"
+          >
+            Próxima <ChevronRight className="h-4 w-4" />
+          </button>
+        </div>
       )}
     </div>
   );

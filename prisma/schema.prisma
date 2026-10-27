@@ -8,39 +8,103 @@ datasource db {
 }
 
 model Work {
-  id            String   @id // AniList ID
-  malId         Int?
-  type          String // manga | manhwa | manhua | lightnovel | anime
-  format        String?
-  title         String
-  titleEn       String?
-  titleNative   String?
-  synonyms      String? // JSON string[]
-  synopsis      String?
-  synopsisPT    String? // tradução PT-BR gerada por IA (cache)
-  cover         String
-  coverColor    String?
-  banner        String?
-  status        String? // RELEASING | FINISHED | HIATUS | NOT_YET_RELEASED | CANCELLED
-  chapters      Int?
-  volumes       Int?
-  episodes      Int?
-  duration      Int?
-  startDate     String?
-  endDate       String?
-  country       String? // JP | KR | CN | TW
-  isAdult       Boolean  @default(false)
-  genres        String // JSON string[]
-  tags          String // JSON [{ name, rank }]
-  avgScore      Int?
-  popularity    Int?
-  favourites    Int?
-  authors       String? // JSON [{ name, role }]
-  extLinks      String? // JSON [{ site, url, language, type, color, icon }]
-  source        String?
-  siteUrl       String?
-  lastUpdate    Int? // unix seconds — última atualização na AniList
-  nextEpisodeAt String? // anime: data real do próximo episódio (ISO)
+  id             String   @id // anilist-<id> | drama-<slug>
+  malId          Int?
+  type           String // manga | manhwa | manhua | lightnovel | anime | drama
+  format         String?
+  title          String
+  titleEn        String?
+  titleNative    String?
+  synonyms       String? // JSON string[]
+  synopsis       String?
+  synopsisPT     String? // tradução PT-BR gerada por IA (cache)
+  cover          String // URL principal da capa (fonte A)
+  coverAlt       String? // URL alternativa (fonte B) — fallback anti-bloqueio
+  coverColor     String?
+  banner         String?
+  status         String? // RELEASING | FINISHED | HIATUS | NOT_YET_RELEASED | CANCELLED
+  chapters       Int?
+  volumes        Int?
+  episodes       Int?
+  duration       Int?
+  startDate      String?
+  endDate        String?
+  country        String? // JP | KR | CN | TW | TH | ES
+  isAdult        Boolean  @default(false)
+  classification String   @default("safe") // safe | suggestive | adult
+  adultTags      String? // JSON string[] — Hentai | Doujin | +18 | Adulto
+  genres         String // JSON string[]
+  tags           String // JSON [{ name, rank }]
+  avgScore       Int?
+  popularity     Int?
+  favourites     Int?
+  authors        String? // JSON [{ name, role }]
+  extLinks       String? // JSON [{ site, url, language, type, color, icon }]
+  magazine       String? // JSON { name, publisher, demographic, schedule, accepts, famous, source }
+  network        String? // dramas: emissora/plataforma
+  source         String?
+  siteUrl        String?
+  lastUpdate     Int? // unix seconds — última atualização na fonte
+  nextEpisodeAt  String? // anime: data real do próximo episódio (ISO)
   nextEpisodeNum Int?
-  createdAt     DateTime @default(now())
+  createdAt      DateTime @default(now())
+
+  @@index([type, popularity])
+  @@index([classification])
+  @@index([startDate])
+  @@index([status])
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  username     String   @unique
+  passHash     String // scrypt$N$r$p$salt$hash (node:crypto)
+  displayName  String?
+  avatarColor  String? // cor do avatar monograma
+  bio          String?
+  settings     String? // JSON { theme, hypeMode, favorites... }
+  adultMode    Boolean  @default(false)
+  adultConsent String? // ISO date do consentimento +18
+  createdAt    DateTime @default(now())
+  lastLoginAt  DateTime?
+  library      LibraryItem[]
+  sessions     Session[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  token     String   @unique // sha256 do token do cookie
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  ua        String?
+
+  @@index([userId])
+}
+
+model LibraryItem {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workId    String
+  status    String   @default("plan") // reading | completed | plan | paused | dropped | favorite
+  rating    Int?
+  note      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, workId])
+  @@index([userId, updatedAt])
+}
+
+model EventLog {
+  id      String   @id @default(cuid())
+  userId  String?
+  kind    String // auth_register | auth_login | adult_toggle | sync_push | sync_pull | cron_refresh ...
+  payload String?
+  at      DateTime @default(now())
+
+  @@index([at])
 }

@@ -1,151 +1,132 @@
 "use client";
 
-import { memo, useState } from "react";
-import { Star, Users, Heart, ChevronLeft, ChevronRight, Layers } from "lucide-react";
-import { TYPE_LABEL, TYPE_COLORS, fmtNum, type WorkData, type WorkType } from "@/lib/types";
+import React, { memo, useState } from "react";
+import { Star, BookOpen, Tv, Heart, Clapperboard } from "lucide-react";
 import { usePortal } from "./store";
+import { proxyImg } from "@/lib/imgurl";
+import { TYPE_LABEL, CLASSIFICATION_LABEL, type WorkData } from "@/lib/types";
 
-export function TypeBadge({ type }: { type: WorkType }) {
-  return (
-    <span className={`inline-flex items-center rounded-md border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${TYPE_COLORS[type]}`}>
-      {TYPE_LABEL[type]}
-    </span>
-  );
+function fmt(n?: number | null): string {
+  if (!n) return "—";
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1).replace(".0", "") + "M";
+  if (n >= 1000) return (n / 1000).toFixed(1).replace(".0", "") + "k";
+  return String(n);
 }
 
-export function ScoreBadge({ score }: { score?: number | null }) {
-  if (score == null) return null;
-  const color = score >= 80 ? "text-emerald-300 bg-emerald-500/15 border-emerald-500/30"
-    : score >= 70 ? "text-amber-300 bg-amber-500/15 border-amber-500/30"
-    : "text-rose-300 bg-rose-500/15 border-rose-500/30";
-  return (
-    <span className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] font-bold ${color}`}>
-      <Star className="h-3 w-3 fill-current" /> {score}
-    </span>
-  );
+function TypeIcon({ type }: { type: string }) {
+  if (type === "anime") return <Tv className="h-3 w-3" />;
+  if (type === "drama") return <Clapperboard className="h-3 w-3" />;
+  return <BookOpen className="h-3 w-3" />;
 }
 
-function CoverImage({ work, className }: { work: WorkData; className?: string }) {
-  const [err, setErr] = useState(false);
-  if (err || !work.cover) {
-    return (
-      <div
-        className={`flex items-center justify-center bg-gradient-to-br from-violet-900/50 via-fuchsia-900/30 to-slate-900 p-2 ${className ?? ""}`}
-        style={{ boxShadow: work.coverColor ? `inset 0 -40px 80px ${work.coverColor}22` : undefined }}
-      >
-        <span className="line-clamp-4 text-center text-xs font-semibold text-white/70">{work.title}</span>
-      </div>
-    );
-  }
-  return (
-    <img
-      src={work.cover}
-      alt={`Capa de ${work.title}`}
-      loading="lazy"
-      onError={() => setErr(true)}
-      className={className}
-    />
-  );
-}
-
-export const WorkCard = memo(function WorkCard({ work }: { work: WorkData }) {
+/** Card de obra — capas reais via proxy multi-fonte; se ambas falharem, card de texto estilizado (nunca imagem fake) */
+export const WorkCard = memo(function WorkCard({ work, rank }: { work: WorkData; rank?: number }) {
   const openWork = usePortal((s) => s.openWork);
+  const [imgStage, setImgStage] = useState(0); // 0=proxy, 1=direta, 2=texto
+  const proxy = proxyImg(work.cover, work.coverAlt);
+  const direct = work.coverAlt ?? work.cover ?? null;
+
+  const tagChips = work.tags.slice(0, 2).map((t) => t.name);
+  const isAdult = work.classification === "adult";
+
   return (
     <button
       onClick={() => openWork(work.id)}
-      className="card-hover group relative w-full overflow-hidden rounded-xl border border-white/8 bg-card text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      aria-label={`Ver detalhes de ${work.title}`}
+      className="cv-auto group relative w-full overflow-hidden rounded-2xl border border-border bg-card text-left transition-all duration-300 hover:-translate-y-1 hover:shadow-xl"
+      aria-label={`${work.title} — ${TYPE_LABEL[work.type]}`}
     >
-      <div className="relative aspect-[2/3] w-full overflow-hidden">
-        <CoverImage work={work} className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/10 to-transparent" />
-        <div className="absolute left-1.5 top-1.5"><TypeBadge type={work.type} /></div>
-        <div className="absolute right-1.5 top-1.5"><ScoreBadge score={work.avgScore} /></div>
-        <div className="absolute inset-x-0 bottom-0 p-2">
-          <p className="line-clamp-2 text-[13px] font-bold leading-tight text-white drop-shadow">{work.title}</p>
-          <div className="mt-1 flex items-center gap-2 text-[10px] text-white/75">
-            {work.type !== "anime" && work.chapters != null && (
-              <span className="inline-flex items-center gap-0.5"><Layers className="h-3 w-3" /> {work.chapters} caps</span>
-            )}
-            {work.type === "anime" && work.episodes != null && (
-              <span className="inline-flex items-center gap-0.5"><Layers className="h-3 w-3" /> {work.episodes} eps</span>
-            )}
-            <span className="inline-flex items-center gap-0.5"><Users className="h-3 w-3" /> {fmtNum(work.popularity)}</span>
+      <div className="relative aspect-[2/3] w-full overflow-hidden" style={{ background: work.coverColor ? `${work.coverColor}22` : "var(--muted)" }}>
+        {/* imagem real: proxy → direta no-referrer → card texto */}
+        {imgStage < 2 && (
+          <img
+            src={imgStage === 0 ? (proxy ?? "") : (direct ?? "")}
+            alt={`Capa de ${work.title}`}
+            loading="lazy"
+            decoding="async"
+            referrerPolicy="no-referrer"
+            onError={() => setImgStage((s) => s + 1)}
+            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.06]"
+          />
+        )}
+        {imgStage === 2 && (
+          <div
+            className="flex h-full w-full flex-col items-center justify-center gap-2 p-3 text-center"
+            style={{
+              background: work.coverColor
+                ? `linear-gradient(150deg, ${work.coverColor}cc, ${work.coverColor}55)`
+                : "linear-gradient(150deg, var(--accent), var(--muted))",
+            }}
+          >
+            <span className="line-clamp-4 text-sm font-black leading-tight" style={{ color: work.coverColor ? "#fff" : "var(--foreground)" }}>
+              {work.title}
+            </span>
+            <span className="text-[10px] font-semibold uppercase tracking-wider opacity-80" style={{ color: work.coverColor ? "#fff" : "var(--muted-foreground)" }}>
+              {TYPE_LABEL[work.type]}
+            </span>
           </div>
+        )}
+
+        {typeof rank === "number" && (
+          <span className="absolute left-2 top-2 flex h-7 w-7 items-center justify-center rounded-lg bg-black/70 text-xs font-black text-white backdrop-blur">
+            {rank}
+          </span>
+        )}
+
+        <span className="absolute right-2 top-2 flex items-center gap-1 rounded-lg bg-black/70 px-1.5 py-0.5 text-[10px] font-bold text-white backdrop-blur">
+          <Star className="h-2.5 w-2.5 fill-amber-400 text-amber-400" /> {work.avgScore ?? "—"}
+        </span>
+
+        <div className="absolute inset-x-0 bottom-0 flex flex-wrap gap-1 bg-gradient-to-t from-black/85 via-black/45 to-transparent p-2 pt-6">
+          <span className="flex items-center gap-1 rounded-md bg-white/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white backdrop-blur">
+            <TypeIcon type={work.type} /> {TYPE_LABEL[work.type]}
+          </span>
+          {isAdult && (
+            <span className="rounded-md bg-red-600/85 px-1.5 py-0.5 text-[9px] font-black uppercase text-white backdrop-blur">
+              {work.adultTags?.[0] ?? "+18"}
+            </span>
+          )}
+          {!isAdult && work.classification === "suggestive" && (
+            <span className="rounded-md bg-pink-600/80 px-1.5 py-0.5 text-[9px] font-black uppercase text-white backdrop-blur">
+              Ecchi
+            </span>
+          )}
+        </div>
+      </div>
+
+      <div className="p-2.5">
+        <p className="line-clamp-2 min-h-[2.4rem] text-[13px] font-bold leading-snug">{work.title}</p>
+        <div className="mt-1.5 flex items-center justify-between text-[10px] text-muted-foreground">
+          <span className="line-clamp-1">{tagChips.join(" · ") || work.genres.slice(0, 2).join(" · ")}</span>
+          <span className="flex shrink-0 items-center gap-2">
+            <span className="flex items-center gap-0.5"><Heart className="h-2.5 w-2.5" />{fmt(work.favourites)}</span>
+          </span>
         </div>
       </div>
     </button>
   );
 });
 
-export function CardSkeleton() {
+/** Linha horizontal rolável de cards */
+export function CardRow({ items, ranks }: { items: WorkData[]; ranks?: boolean }) {
+  if (!items.length) return null;
   return (
-    <div className="overflow-hidden rounded-xl border border-white/8 bg-card">
-      <div className="shimmer aspect-[2/3] w-full" />
+    <div className="no-scrollbar -mx-1 flex snap-x gap-3 overflow-x-auto px-1 pb-2">
+      {items.map((w, i) => (
+        <div key={w.id} className="w-[150px] shrink-0 snap-start sm:w-[168px]">
+          <WorkCard work={w} rank={ranks ? i + 1 : undefined} />
+        </div>
+      ))}
     </div>
   );
 }
 
-export function WorkRow({ title, subtitle, works, loading, id }: {
-  title: string;
-  subtitle?: string;
-  works?: WorkData[] | null;
-  loading?: boolean;
-  id?: string;
-}) {
-  const scroll = (dir: number) => {
-    const el = document.getElementById(id ?? title);
-    el?.scrollBy({ left: dir * Math.max(320, (el.clientWidth ?? 600) * 0.8), behavior: "smooth" });
-  };
+/** Grid responsivo de cards */
+export function CardGrid({ items }: { items: WorkData[] }) {
   return (
-    <section className="fade-up">
-      <div className="mb-3 flex items-end justify-between gap-3 px-1">
-        <div>
-          <h2 className="text-lg font-extrabold tracking-tight sm:text-xl">{title}</h2>
-          {subtitle && <p className="text-xs text-muted-foreground sm:text-[13px]">{subtitle}</p>}
-        </div>
-        <div className="hidden gap-1.5 sm:flex">
-          <button onClick={() => scroll(-1)} aria-label="Rolar para esquerda"
-            className="rounded-full border border-white/10 bg-secondary/60 p-2 text-muted-foreground transition hover:border-primary/40 hover:text-foreground">
-            <ChevronLeft className="h-4 w-4" />
-          </button>
-          <button onClick={() => scroll(1)} aria-label="Rolar para direita"
-            className="rounded-full border border-white/10 bg-secondary/60 p-2 text-muted-foreground transition hover:border-primary/40 hover:text-foreground">
-            <ChevronRight className="h-4 w-4" />
-          </button>
-        </div>
-      </div>
-      <div
-        id={id ?? title}
-        className="no-scrollbar flex snap-x gap-3 overflow-x-auto pb-1"
-      >
-        {loading && Array.from({ length: 8 }).map((_, i) => (
-          <div key={i} className="w-[132px] shrink-0 snap-start sm:w-[152px]"><CardSkeleton /></div>
-        ))}
-        {works?.map((w) => (
-          <div key={w.id} className="w-[132px] shrink-0 snap-start sm:w-[152px]">
-            <WorkCard work={w} />
-          </div>
-        ))}
-        {!loading && works && works.length === 0 && (
-          <p className="py-8 text-sm text-muted-foreground">Nada por aqui ainda.</p>
-        )}
-      </div>
-    </section>
-  );
-}
-
-export function StatsMini({ work }: { work: WorkData }) {
-  return (
-    <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
-      <ScoreBadge score={work.avgScore} />
-      <span className="inline-flex items-center gap-1 rounded-md border border-white/10 bg-white/5 px-1.5 py-0.5">
-        <Users className="h-3 w-3" /> {fmtNum(work.popularity)}
-      </span>
-      <span className="inline-flex items-center gap-1 rounded-md border border-white/10 bg-white/5 px-1.5 py-0.5">
-        <Heart className="h-3 w-3" /> {fmtNum(work.favourites)}
-      </span>
-      <TypeBadge type={work.type} />
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+      {items.map((w) => (
+        <WorkCard key={w.id} work={w} />
+      ))}
     </div>
   );
 }

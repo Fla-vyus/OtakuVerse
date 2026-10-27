@@ -1,7 +1,7 @@
 // Servidor: cliente da API GraphQL da AniList (busca ao vivo / descobrir)
 const API = "https://graphql.anilist.co";
 
-const SEARCH_FIELDS = `
+export const SEARCH_FIELDS = `
   id
   idMal
   type
@@ -81,6 +81,7 @@ export function toWorkRow(m: any) {
     synonyms: JSON.stringify(m.synonyms ?? []),
     synopsis: stripHtml(m.description),
     cover: m.coverImage?.extraLarge ?? m.coverImage?.large ?? "",
+    coverAlt: null,
     coverColor: m.coverImage?.color ?? null,
     banner: m.bannerImage ?? null,
     status: m.status ?? null,

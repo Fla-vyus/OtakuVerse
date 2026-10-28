@@ -1,11 +1,11 @@
 {
   "app": "OtakuVerse",
   "version": 3,
-  "generatedAt": "2026-10-28T16:27:07.201Z",
+  "generatedAt": "2026-10-28T19:18:12.028Z",
   "catalog": {
     "count": 40456,
-    "bytes": 20792527,
-    "sha": "803e352fa15c50f900bd5a9ed770795d7adfd4ee57b7d9ec6a19ef956dad33db"
+    "bytes": 20940449,
+    "sha": "abe2b88aa750caf0e218b0c5064e7fea31fa610ae29137caf329d1d866bf74de"
   },
   "accounts": {
     "summary": "0 usuários, 0 biblioteca, 0 shelf, 0 listas",
@@ -17,7 +17,7 @@
       "lists": 0
     },
     "bytes": 101,
-    "sha": "48e15f0a76fdf8e06df86b94fb6df5e3a9ffaf78e705c8c3ce47021271b64f4d"
+    "sha": "2776e98a3f62e1c0e799bf9ce36f3fd116b6417d43e00951f46880422a7baa2a"
   },
   "db": {
     "url": "file:/home/z/my-project/db/custom.db"

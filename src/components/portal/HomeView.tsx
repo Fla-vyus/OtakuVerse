@@ -426,6 +426,19 @@ export function HomeView() {
     setAttempt((a) => a + 1);
   }
 
+  // auto-recuperação da home: se falhou (servidor fora do ar), tenta de novo sozinho
+  // em 10s e quando o navegador anunciar reconexão — nunca fica morta esperando clique.
+  useEffect(() => {
+    if (!failed) return;
+    const t = setTimeout(() => setAttempt((a) => a + 1), 10_000);
+    const on = () => setAttempt((a) => a + 1);
+    window.addEventListener("online", on);
+    return () => {
+      clearTimeout(t);
+      window.removeEventListener("online", on);
+    };
+  }, [failed]);
+
   const catChips = [
     { label: "Mangás", type: "manga", emoji: "📖" },
     { label: "Manhwas", type: "manhwa", emoji: "🇰🇷" },

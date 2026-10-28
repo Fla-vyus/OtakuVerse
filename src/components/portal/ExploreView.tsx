@@ -46,6 +46,15 @@ const LANGS = [
 
 const PER_PAGE_OPTIONS = [60, 120, 180];
 
+// Fallback estático dos 18 gêneros oficiais da AniList: se /api/works falhar (servidor
+// reiniciando, rede instável), os selects NUNCA aparecem vazios — o usuário sempre tem
+// opções para filtrar, mesmo enquanto a facets real não chega.
+const GENRE_FALLBACK = [
+  "Action", "Adventure", "Comedy", "Drama", "Ecchi", "Fantasy", "Horror",
+  "Mahou Shoujo", "Mecha", "Music", "Mystery", "Psychological", "Romance",
+  "Sci-Fi", "Slice of Life", "Sports", "Supernatural", "Thriller",
+];
+
 export function ExploreView() {
   const filters = usePortal((s) => s.filters);
   const setFilters = usePortal((s) => s.setFilters);
@@ -56,6 +65,7 @@ export function ExploreView() {
   const [perPage, setPerPage] = useState(60);
   const [facets, setFacets] = useState<{ genres: { name: string; count: number }[]; tags: { name: string; count: number }[]; magazines?: { name: string; count: number }[] }>({ genres: [], tags: [] });
   const [loading, setLoading] = useState(true);
+  const [fetchFailed, setFetchFailed] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [liveResults, setLiveResults] = useState<WorkData[] | null>(null); // busca ao vivo AniList
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -83,8 +93,13 @@ export function ExploreView() {
             setItems(d.items);
             setTotal(d.total);
             if (d.facets) setFacets(d.facets);
+            setFetchFailed(false);
+          } else {
+            // resposta veio sem conteúdo utilizável → estado de erro com retry
+            setFetchFailed(true);
           }
         })
+        .catch(() => setFetchFailed(true))
         .finally(() => setLoading(false));
     },
     [filters, perPage]
@@ -106,6 +121,19 @@ export function ExploreView() {
     }, 0);
     return () => clearTimeout(t);
   }, [page, fetchPage]);
+
+  // auto-recuperação: se a busca falhou (servidor fora do ar/rede), tenta de novo em 8s
+  // e quando o navegador anunciar reconexão — o Explorar nunca fica morto em silêncio.
+  useEffect(() => {
+    if (!fetchFailed) return;
+    const t = setTimeout(() => fetchPage(page), 8000);
+    const on = () => fetchPage(page);
+    window.addEventListener("online", on);
+    return () => {
+      clearTimeout(t);
+      window.removeEventListener("online", on);
+    };
+  }, [fetchFailed, fetchPage, page]);
 
   // busca ao vivo na AniList quando há texto e poucos resultados locais
   // reset derivado em render — limpa resultados ao mudar a busca
@@ -226,8 +254,11 @@ export function ExploreView() {
             Gênero
             <select value={filters.genre} onChange={(e) => setFilters({ genre: e.target.value })} className="mt-1 h-10 w-full rounded-xl border border-input bg-background px-3 text-sm font-semibold text-foreground">
               <option value="all">Todos os gêneros</option>
-              {facets.genres.map((g) => (
-                <option key={g.name} value={g.name}>{g.name} ({g.count})</option>
+              {(facets.genres.length > 0
+                ? facets.genres
+                : GENRE_FALLBACK.map((name) => ({ name, count: 0 }))
+              ).map((g) => (
+                <option key={g.name} value={g.name}>{g.count > 0 ? `${g.name} (${g.count})` : g.name}</option>
               ))}
             </select>
           </label>
@@ -235,8 +266,11 @@ export function ExploreView() {
             Tag (tema)
             <select value={filters.tag} onChange={(e) => setFilters({ tag: e.target.value })} className="mt-1 h-10 w-full rounded-xl border border-input bg-background px-3 text-sm font-semibold text-foreground">
               <option value="all">Todas as tags</option>
-              {facets.tags.map((t) => (
-                <option key={t.name} value={t.name}>{t.name} ({t.count})</option>
+              {(facets.tags.length > 0
+                ? facets.tags
+                : FAMOUS_TAGS.map((t) => ({ name: t.tag, count: 0 }))
+              ).map((t) => (
+                <option key={t.name} value={t.name}>{t.count > 0 ? `${t.name} (${t.count})` : t.name}</option>
               ))}
             </select>
           </label>
@@ -301,6 +335,19 @@ export function ExploreView() {
           ))}
         </div>
       </div>
+
+      {fetchFailed && !loading && (
+        <div className="flex flex-col items-center gap-3 rounded-2xl border border-amber-500/40 bg-amber-500/10 p-6 text-center">
+          <p className="font-bold text-amber-600 dark:text-amber-400">Sem conexão com o catálogo agora</p>
+          <p className="max-w-md text-xs text-muted-foreground">O servidor pode estar reiniciando. Já estamos tentando de novo automaticamente — ou toque no botão abaixo.</p>
+          <button
+            onClick={() => fetchPage(page)}
+            className="rounded-xl bg-primary px-4 py-2 text-sm font-bold text-primary-foreground shadow transition hover:opacity-90"
+          >
+            Tentar novamente
+          </button>
+        </div>
+      )}
 
       {loading ? (
         <div className="grid grid-cols-3 gap-2.5 sm:gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">

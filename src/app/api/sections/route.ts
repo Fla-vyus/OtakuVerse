@@ -21,6 +21,26 @@ const TTL = 5 * 60_000;
 
 const BOOK_TYPES = ["manga", "manhwa", "manhua"];
 
+// Dedupe de franquia: mangá+anime (ou temporada I/II/III) da MESMA série não podem
+// ocupar 2 cards na mesma fileira — "Mushoku Tensei II" e "Mushoku Tensei (mangá)"
+// viram uma chave só (título antes de ":"/"(", pontuação fora, sufixo de sequência engolido).
+function franquia(w: WorkData): string {
+  const base = w.title.split(/[:(/]/)[0].toLowerCase().replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
+  return base.replace(/ (part|season|temporada|s)?\s*(i{1,3}|iv|vi{1,3}|xi{0,3}|\d+|r\d+)$/i, "").trim() || base;
+}
+function dedupeFranquia(list: WorkData[], max: number): WorkData[] {
+  const seen = new Set<string>();
+  const out: WorkData[] = [];
+  for (const w of list) {
+    const key = franquia(w);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(w);
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
 function project<T>(list: T[]): T[] {
   // listas de obras passam pela projeção de card; entradas compostas (ex.: chapterReleases) ficam como estão
   return list.map((item: any) =>
@@ -60,37 +80,48 @@ export async function GET(req: NextRequest) {
     const today = new Date().toISOString().slice(0, 10);
 
     // 1) Lançamentos recentes (últimos 120 dias, com capa, ordenado por popularidade)
-    const launches = all
-      .filter((w) => (w.startDate ?? "") >= daysAgo(120) && (w.startDate ?? "") <= today && w.cover && (w.popularity ?? 0) >= 300)
-      .sort((a, b) => (b.popularity ?? 0) - (a.popularity ?? 0))
-      .slice(0, 24);
+    //    Dedupe de franquia: temporada/mangá da mesma série não ocupa 2 cards.
+    const launches = dedupeFranquia(
+      all
+        .filter((w) => (w.startDate ?? "") >= daysAgo(120) && (w.startDate ?? "") <= today && w.cover && (w.popularity ?? 0) >= 300)
+        .sort((a, b) => (b.popularity ?? 0) - (a.popularity ?? 0)),
+      24
+    );
 
-    // 2) Mangás novos — começaram a publicar há pouco tempo (mangá/manhwa/manhua, SEM datas futuras)
-    let newMangas = all
-      .filter((w) => BOOK_TYPES.includes(w.type) && w.cover && (w.startDate ?? "") >= daysAgo(120) && (w.startDate ?? "") <= today)
-      .sort((a, b) => (b.startDate ?? "").localeCompare(a.startDate ?? ""))
-      .slice(0, 24);
+    // 2) Mangás novos — SÓ mangá (a fileira se chama "Mangás Novos" e o botão "ver todos"
+    //    abre o Explorar filtrado em type=manga; manhwas/manhuas têm suas próprias fileiras).
+    //    SEM datas futuras + dedupe de franquia (saga não repete card).
+    let newMangas = dedupeFranquia(
+      all
+        .filter((w) => w.type === "manga" && w.cover && (w.startDate ?? "") >= daysAgo(120) && (w.startDate ?? "") <= today)
+        .sort((a, b) => (b.startDate ?? "").localeCompare(a.startDate ?? "")),
+      24
+    );
     if (newMangas.length < 8) {
       // janela maior para nunca ficar vazio
-      newMangas = all
-        .filter((w) => BOOK_TYPES.includes(w.type) && w.cover && (w.startDate ?? "") >= daysAgo(365) && (w.startDate ?? "") <= today)
-        .sort((a, b) => (b.startDate ?? "").localeCompare(a.startDate ?? ""))
-        .slice(0, 24);
+      newMangas = dedupeFranquia(
+        all
+          .filter((w) => w.type === "manga" && w.cover && (w.startDate ?? "") >= daysAgo(365) && (w.startDate ?? "") <= today)
+          .sort((a, b) => (b.startDate ?? "").localeCompare(a.startDate ?? "")),
+        24
+      );
     }
 
     // 3) Capítulos chegando — séries ativas com ritmo semanal estimado (helper central)
     const chapterReleases = estimateChapterReleases(all, 48);
 
     // 4) Bombando: novos hits em andamento — estreias recentes com tração OU poucos caps publicados
-    let hits = all
-      .filter((w) => w.status === "RELEASING" && BOOK_TYPES.includes(w.type))
-      .filter(
-        (w) =>
-          (w.chapters != null && w.chapters <= 5) ||
-          ((w.startDate ?? "9999") >= daysAgo(540) && (w.popularity ?? 0) >= 3000)
-      )
-      .sort((a, b) => (b.popularity ?? 0) - (a.popularity ?? 0))
-      .slice(0, 24);
+    let hits = dedupeFranquia(
+      all
+        .filter((w) => w.status === "RELEASING" && BOOK_TYPES.includes(w.type))
+        .filter(
+          (w) =>
+            (w.chapters != null && w.chapters <= 5) ||
+            ((w.startDate ?? "9999") >= daysAgo(540) && (w.popularity ?? 0) >= 3000)
+        )
+        .sort((a, b) => (b.popularity ?? 0) - (a.popularity ?? 0)),
+      24
+    );
     // fallback: se ainda pouco, completa com RELEASING mais populares do momento
     if (hits.length < 10) {
       const extra = all
@@ -101,13 +132,19 @@ export async function GET(req: NextRequest) {
     }
 
     // 5) Mais buscados (proxy honesto de vendas: favoritos globais)
-    const bestsellers = [...all].sort((a, b) => (b.favourites ?? 0) - (a.favourites ?? 0)).slice(0, 24);
+    //    Dedupe: ONE PIECE anime + mangá não pode ocupar 2 vagas do top 24.
+    const bestsellers = dedupeFranquia(
+      [...all].sort((a, b) => (b.favourites ?? 0) - (a.favourites ?? 0)),
+      24
+    );
 
     // 6) Obras-primas (melhores notas de todos os tempos)
-    const masterpieces = all
-      .filter((w) => (w.avgScore ?? 0) >= 80 && w.cover)
-      .sort((a, b) => (b.avgScore ?? 0) - (a.avgScore ?? 0))
-      .slice(0, 24);
+    const masterpieces = dedupeFranquia(
+      all
+        .filter((w) => (w.avgScore ?? 0) >= 80 && w.cover)
+        .sort((a, b) => (b.avgScore ?? 0) - (a.avgScore ?? 0)),
+      24
+    );
 
     // 7) Ecchi/Sensorial em alta (gosto do usuário: ecchi + boa arte + história)
     //    Ecchi DE VERDADE: gênero oficial "Ecchi" da AniList (dado primário) ou fan-service
@@ -115,14 +152,9 @@ export async function GET(req: NextRequest) {
     //    cenas pontuais de nudez (Berserk 66, Chainsaw Man 57, Evangelion 55, Black Clover 45)
     //    dominavam a fileira por favoritos e viravam recomendação errada; o rank de Nudity não
     //    separa (Mushoku P2 tem 41 e é ecchi), só o gênero separa (891 obras no acervo).
-    //    Dedupe de franquia: mangá+anime da mesma série não podem ocupar 2 cards.
+    //    Dedupe de franquia aplicado via helper central (mesma regra de todas as fileiras).
     const isRealEcchi = (w: WorkData) =>
       w.genres.includes("Ecchi") || w.tags.some((t) => t.name === "Nudity" && t.rank >= 75);
-    const franquia = (w: WorkData) => {
-      const base = w.title.split(/[:(/]/)[0].toLowerCase().replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
-      // sequências: "Mushoku Tensei II", "... Part 2", "Code Geass ... R2", "Temporada 3" → mesma base
-      return base.replace(/ (part|season|temporada|s)?\s*(i{1,3}|iv|vi{1,3}|xi{0,3}|\d+|r\d+)$/i, "").trim() || base;
-    };
     const seenFranchise = new Set<string>();
     const ecchiHits: WorkData[] = [];
     for (const w of all
@@ -148,23 +180,29 @@ export async function GET(req: NextRequest) {
     }
 
     // 8) Manhwas em alta (KR)
-    const manhwaHits = all
-      .filter((w) => w.type === "manhwa" && w.cover)
-      .sort((a, b) => (b.popularity ?? 0) - (a.popularity ?? 0))
-      .slice(0, 24);
+    const manhwaHits = dedupeFranquia(
+      all
+        .filter((w) => w.type === "manhwa" && w.cover)
+        .sort((a, b) => (b.popularity ?? 0) - (a.popularity ?? 0)),
+      24
+    );
 
     // 9) Animes do momento
-    const animePicks = all
-      .filter((w) => w.type === "anime" && w.cover)
-      .sort((a, b) => (b.favourites ?? 0) - (a.favourites ?? 0))
-      .slice(0, 24);
+    const animePicks = dedupeFranquia(
+      all
+        .filter((w) => w.type === "anime" && w.cover)
+        .sort((a, b) => (b.favourites ?? 0) - (a.favourites ?? 0)),
+      24
+    );
 
     // 10) Estreias do mês (calendário teaser)
     const monthKey = new Date().toISOString().slice(0, 7);
-    const monthLaunches = all
-      .filter((w) => (w.startDate ?? "").startsWith(monthKey) && w.cover)
-      .sort((a, b) => (b.popularity ?? 0) - (a.popularity ?? 0))
-      .slice(0, 12);
+    const monthLaunches = dedupeFranquia(
+      all
+        .filter((w) => (w.startDate ?? "").startsWith(monthKey) && w.cover)
+        .sort((a, b) => (b.popularity ?? 0) - (a.popularity ?? 0)),
+      12
+    );
 
     // 11) Notícias (dados reais do dia — fonte dupla AniList→Kitsu, nunca derruba a rota)
     const news = await buildNews(all).catch(() => []);

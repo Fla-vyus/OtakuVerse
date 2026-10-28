@@ -1,5 +1,5 @@
 #!/bin/bash
-# Deploy canônico do OtakuVerse — v3.4 (à prova de esquecimento).
+# Deploy canônico do OtakuVerse — v3.5 (à prova de esquecimento).
 #
 # Usage: bash /home/z/my-project/scripts/deploy.sh
 #
@@ -37,11 +37,16 @@ if ! npm run build >> "$LOG" 2>&1; then
   exit 1
 fi
 
-# 2) Marcador de código novo (dedupe de franquia usa "temporada" no chunk de seções)
-if rg -l "temporada" .next/standalone/.next/server/chunks/ >/dev/null 2>&1; then
-  log "marcador OK: código novo presente no standalone"
+# 2) Marcadores de código novo (chunk de seções v3.5: partes core/more + webnovels)
+if rg -l "webnovelPicks" .next/standalone/.next/server/chunks/ >/dev/null 2>&1; then
+  log "marcador OK: código novo (v3.5) presente no standalone"
 else
-  log "AVISO: marcador 'temporada' ausente no standalone — build possivelmente stale"
+  log "AVISO: marcador 'webnovelPicks' ausente no standalone — build possivelmente stale"
+fi
+if rg -l "sectionsCoreCache" .next/standalone/.next/server/chunks/ >/dev/null 2>&1; then
+  log "marcador OK: /api/sections com fases (core/more)"
+else
+  log "AVISO: marcador 'sectionsCoreCache' ausente — build possivelmente stale"
 fi
 
 # 3) Mata TUDO que possa servir na 3000 (next-server é o nome real do processo)
@@ -50,9 +55,10 @@ pkill -f "next-server" 2>/dev/null
 pkill -f "standalone/server.js" 2>/dev/null
 sleep 3
 
-# 4) Inicia com double-fork (sobrevive ao fim desta sessão bash)
+# 4) Inicia com double-fork (sobrevive ao fim desta sessão bash).
+#    .env exportado (DATABASE_URL + CRON_KEY) — a rota /api/cron/tick depende da chave.
 log "iniciando produção…"
-node -e "require('child_process').spawn('bash',['-c','DATABASE_URL=file:/home/z/my-project/db/custom.db PORT=3000 NODE_ENV=production node /home/z/my-project/.next/standalone/server.js >> /home/z/my-project/server.log 2>&1'],{detached:true,stdio:'ignore'}).unref()"
+node -e "require('child_process').spawn('bash',['-c','set -a; source /home/z/my-project/.env; set +a; PORT=3000 NODE_ENV=production node /home/z/my-project/.next/standalone/server.js >> /home/z/my-project/server.log 2>&1'],{detached:true,stdio:'ignore'}).unref()"
 
 # 5) Health check (até 60s)
 OK=0
@@ -66,4 +72,14 @@ if [ "$OK" = "1" ]; then
 else
   log "ERRO: health check falhou após 60s — keepalive vai assumir a recuperação"
 fi
+
+# 6) Agendador PERMANENTE (tick de 30min via HTTP) — relança se não estiver vivo.
+#    O servidor também tem seu próprio setInterval de 30min; as camadas se cobrem.
+if pgrep -f "scheduler-daemon.sh" >/dev/null 2>&1; then
+  log "scheduler-daemon já vivo — nada a fazer"
+else
+  node -e "require('child_process').spawn('bash',['/home/z/my-project/scripts/scheduler-daemon.sh'],{detached:true,stdio:'ignore'}).unref()"
+  log "scheduler-daemon iniciado (tick 30min permanente)"
+fi
+
 log "=== deploy finalizado ==="

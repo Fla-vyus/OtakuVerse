@@ -1,27 +1,37 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import dynamic from "next/dynamic";
 import {
   Home, Compass, Sparkles, Search, MoonStar, CalendarDays, Newspaper,
   Library, Palette, User, LogIn, LogOut, ShieldAlert, Loader2, CloudCheck, CloudOff,
-  TrendingUp, BookMarked, MonitorPlay,
+  TrendingUp, BookMarked, MonitorPlay, Download,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { usePortal, bindHashSync, bindPendingSyncRetry, THEMES, type View } from "./store";
 import { HomeView } from "./HomeView";
-import { ExploreView } from "./ExploreView";
-import { DetailView } from "./DetailView";
-import { AssistantView } from "./AssistantView";
-import { CalendarView } from "./CalendarView";
-import { NewsView } from "./NewsView";
-import { LibraryView } from "./LibraryView";
-import { ProfileView } from "./ProfileView";
-import { AuthView } from "./AuthView";
-import { AdultZoneView } from "./AdultZoneView";
-import { LegalView } from "./LegalView";
-import { SalesView } from "./SalesView";
-import { MagazinesView } from "./MagazinesView";
-import { StreamingView } from "./StreamingView";
+
+// CODE-SPLITTING (carregar em fases, parte 2): cada view vira um chunk JS separado
+// que só baixa QUANDO o usuário navega até ela — a primeira visita baixa apenas a
+// home + casca do portal (antes: 14 views inteiras de uma vez). Desktop não muda em nada.
+const viewFallback = () => (
+  <div className="flex min-h-[50vh] items-center justify-center text-muted-foreground" aria-busy="true">
+    <Loader2 className="h-5 w-5 animate-spin" />
+  </div>
+);
+const ExploreView = dynamic(() => import("./ExploreView").then((m) => m.ExploreView), { ssr: false, loading: viewFallback });
+const DetailView = dynamic(() => import("./DetailView").then((m) => m.DetailView), { ssr: false, loading: viewFallback });
+const AssistantView = dynamic(() => import("./AssistantView").then((m) => m.AssistantView), { ssr: false, loading: viewFallback });
+const CalendarView = dynamic(() => import("./CalendarView").then((m) => m.CalendarView), { ssr: false, loading: viewFallback });
+const NewsView = dynamic(() => import("./NewsView").then((m) => m.NewsView), { ssr: false, loading: viewFallback });
+const LibraryView = dynamic(() => import("./LibraryView").then((m) => m.LibraryView), { ssr: false, loading: viewFallback });
+const ProfileView = dynamic(() => import("./ProfileView").then((m) => m.ProfileView), { ssr: false, loading: viewFallback });
+const AuthView = dynamic(() => import("./AuthView").then((m) => m.AuthView), { ssr: false, loading: viewFallback });
+const AdultZoneView = dynamic(() => import("./AdultZoneView").then((m) => m.AdultZoneView), { ssr: false, loading: viewFallback });
+const LegalView = dynamic(() => import("./LegalView").then((m) => m.LegalView), { ssr: false, loading: viewFallback });
+const SalesView = dynamic(() => import("./SalesView").then((m) => m.SalesView), { ssr: false, loading: viewFallback });
+const MagazinesView = dynamic(() => import("./MagazinesView").then((m) => m.MagazinesView), { ssr: false, loading: viewFallback });
+const StreamingView = dynamic(() => import("./StreamingView").then((m) => m.StreamingView), { ssr: false, loading: viewFallback });
 
 function Logo() {
   const go = usePortal((s) => s.go);
@@ -196,6 +206,21 @@ export function PortalApp() {
   const setLibrary = usePortal((s) => s.setLibrary);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<{ total: number | null; lastRefreshAt: string | null } | null>(null);
+  const [canInstall, setCanInstall] = useState(false);
+
+  useEffect(() => {
+    // PWA: service worker (produção) — cache de capas/APIs/offline + instalável
+    if (process.env.NODE_ENV === "production" && "serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/sw.js").catch(() => {});
+    }
+    const onInstallPrompt = (e: Event) => {
+      e.preventDefault(); // botão próprio no rodapé em vez do pop-up do navegador
+      (window as unknown as { __ovInstallPrompt?: Event }).__ovInstallPrompt = e;
+      setCanInstall(true);
+    };
+    window.addEventListener("beforeinstallprompt", onInstallPrompt);
+    return () => window.removeEventListener("beforeinstallprompt", onInstallPrompt);
+  }, []);
 
   useEffect(() => {
     // tema + hypeMode salvos
@@ -327,7 +352,7 @@ export function PortalApp() {
               <div>
                 <p className="text-sm font-bold">OtakuVerse</p>
                 <p className="text-[11px] leading-relaxed text-muted-foreground">
-                  Portal de descoberta de mangás, manhwas, manhuas, light novels e animes.
+                  Portal de descoberta de mangás, manhwas, manhuas, light novels, webnovels e animes.
                   Catálogo real, atualização automática e nuvem pessoal.
                 </p>
               </div>
@@ -338,6 +363,17 @@ export function PortalApp() {
                 <button onClick={() => go("legal")} className="w-fit text-left underline-offset-2 hover:text-foreground hover:underline">Termos de Uso</button>
                 <button onClick={() => { usePortal.setState({ legalTab: "privacidade" }); go("legal"); }} className="w-fit text-left underline-offset-2 hover:text-foreground hover:underline">Política de Privacidade</button>
                 <button onClick={() => { usePortal.setState({ legalTab: "regras" }); go("legal"); }} className="w-fit text-left underline-offset-2 hover:text-foreground hover:underline">Regras & Conteúdo +18</button>
+                {canInstall && (
+                  <button
+                    onClick={() => {
+                      const p = (window as unknown as { __ovInstallPrompt?: { prompt: () => void } }).__ovInstallPrompt;
+                      if (p) { p.prompt(); (window as unknown as { __ovInstallPrompt?: unknown }).__ovInstallPrompt = null; setCanInstall(false); }
+                    }}
+                    className="flex w-fit items-center gap-1 text-left font-bold text-primary underline-offset-2 hover:underline"
+                  >
+                    <Download className="h-3 w-3" /> Instalar app (PWA)
+                  </button>
+                )}
               </div>
             </div>
             <div className="text-[11px] text-muted-foreground">

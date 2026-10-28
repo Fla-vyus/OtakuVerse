@@ -8,7 +8,7 @@ export type View =
 
 export interface ExploreFilters {
   q: string;
-  type: string; // all | manga | manhwa | manhua | lightnovel | anime | drama
+  type: string; // all | manga | manhwa | manhua | lightnovel | webnovel | anime
   genre: string;
   tag: string;
   status: string;

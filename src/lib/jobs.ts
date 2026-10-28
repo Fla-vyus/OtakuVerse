@@ -172,12 +172,13 @@ async function warmUpRoutes() {
     } catch {}
     await new Promise((res) => setTimeout(res, 2000));
   }
-  // GETs que o cliente usa de verdade — compila rota + aquece cache dos dados
+  // GETs que o cliente usa de verdade — compila rota + aquece cache dos dados.
+  // A home em fases (v3.5) usa part=core e part=more — as duas são aquecidas.
   const routes = [
     "/", // página única (SPA de hash)
-    "/api/sections", "/api/hype", "/api/news", "/api/sales", "/api/magazines",
+    "/api/sections?part=core", "/api/sections?part=more", "/api/hype", "/api/news", "/api/sales", "/api/magazines",
     "/api/streaming", "/api/schedule", "/api/status",
-    "/api/works?sort=popular&perPage=60", "/api/works/1", // detail: compila o route handler
+    "/api/works?sort=popular&perPage=60", "/api/works?type=webnovel&sort=popular&perPage=60", "/api/works/1", // detail: compila o route handler
   ];
   for (const r of routes) {
     try {
@@ -246,6 +247,22 @@ export function startBackgroundJobs() {
   };
   setTimeout(doCoverBackfill, 2.5 * 60_000);
   setInterval(doCoverBackfill, 24 * 60 * 60_000);
+
+  // 6) TOPUP diário de webnovels (MangaUpdates, gratuito): pega títulos novos (create-only)
+  //    + enriquece 150 webnovels ainda sem status/autores. Idempotente e com guarda de memória.
+  const doWebnovelTopup = () => {
+    memOk(1450).then((ok) => {
+      if (!ok) return;
+      runScript("scripts/seed-webnovels.ts --topup", 9 * 60_000)
+        .then((out) => {
+          const line = out.split("\n").find((l) => l.includes("TOPUP OK"));
+          if (line) console.log("[webnovels]", line.trim());
+        })
+        .catch((e) => console.warn("[webnovels] topup falhou (tenta amanhã):", (e as Error).message));
+    });
+  };
+  setTimeout(doWebnovelTopup, 40 * 60_000);
+  setInterval(doWebnovelTopup, 24 * 60 * 60_000);
 
   // NOTA: o ingest do Feed Social (Reddit/Kitsu) foi DESATIVADO junto com a aba
   // "Feed ao vivo" (removida a pedido do usuário — não entregou o valor esperado).

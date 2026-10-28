@@ -15,10 +15,12 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"),
-  title: "OtakuVerse — Mangás, Manhwas, LNs e Animes com curadoria de IA",
+  title: "OtakuVerse — Mangás, Manhwas, Webnovels, LNs e Animes com curadoria de IA",
   description:
-    "Portal brasileiro para garimpar mangás, manhwas, manhuas, light novels e animes: catálogo real com dezenas de milhares de obras, hype do momento, vendas (Oricon), revistas, calendário de capítulos, notícias, nuvem pessoal, temas e a waifu curadora Aoi.",
-  keywords: ["mangá", "manhwa", "manhua", "light novel", "anime", "ecchi", "webtoon", "vendas", "oricon", "revistas", "recomendações", "IA", "waifu"],
+    "Portal brasileiro para garimpar mangás, manhwas, manhuas, light novels, webnovels e animes: catálogo real com dezenas de milhares de obras, hype do momento, vendas (Oricon), revistas, calendário de capítulos, notícias, nuvem pessoal, temas e a waifu curadora Aoi. Instale como app!",
+  keywords: ["mangá", "manhwa", "manhua", "light novel", "webnovel", "web novel", "anime", "ecchi", "webtoon", "vendas", "oricon", "revistas", "recomendações", "IA", "waifu", "pwa"],
+  applicationName: "OtakuVerse",
+  manifest: "/manifest.webmanifest",
   alternates: { canonical: "/" },
   robots: {
     index: true,
@@ -26,11 +28,21 @@ export const metadata: Metadata = {
     googleBot: { index: true, follow: true, "max-image-preview": "large" },
   },
   icons: {
-    icon: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg",
+    icon: [
+      { url: "/icons/favicon-32.png", sizes: "32x32", type: "image/png" },
+      { url: "/icons/favicon-48.png", sizes: "48x48", type: "image/png" },
+      { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
+    ],
+    apple: [{ url: "/icons/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
+  },
+  appleWebApp: {
+    capable: true,
+    title: "OtakuVerse",
+    statusBarStyle: "black-translucent",
   },
   openGraph: {
     title: "OtakuVerse",
-    description: "Seu garimpo de mangás, manhwas, LNs e animes com a waifu curadora Aoi.",
+    description: "Seu garimpo de mangás, manhwas, webnovels, LNs e animes com a waifu curadora Aoi.",
     siteName: "OtakuVerse",
     type: "website",
     locale: "pt_BR",

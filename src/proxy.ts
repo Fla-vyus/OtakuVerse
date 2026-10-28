@@ -3,7 +3,7 @@
 // nosniff, referrer e permissions policy.
 import { NextResponse, type NextRequest } from "next/server";
 
-export default function proxy(_req: NextRequest) {
+export default function proxy(req: NextRequest) {
   const res = NextResponse.next();
   const h = res.headers;
 
@@ -18,6 +18,7 @@ export default function proxy(_req: NextRequest) {
     "img-src 'self' data: blob:",
     "font-src 'self' data:",
     `connect-src 'self'${dev ? " ws: wss:" : ""}`,
+    "worker-src 'self'", // PWA: registro do service worker (/sw.js)
     "media-src 'self'",
     "object-src 'none'",
     "base-uri 'self'",
@@ -32,6 +33,16 @@ export default function proxy(_req: NextRequest) {
   h.set("Cross-Origin-Opener-Policy", "same-origin");
   // HSTS: o gateway serve HTTPS; forçado por 1 ano (inclui subdomínios)
   h.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+
+  // PWA: o sw.js NUNCA pode ficar preso em cache (o navegador precisa ver a nova
+  // versão a cada visita para atualizar o app), o manifest fica 1h.
+  const path = req.nextUrl.pathname;
+  if (path === "/sw.js") {
+    h.set("Cache-Control", "no-cache, no-store, must-revalidate");
+    h.set("Service-Worker-Allowed", "/");
+  } else if (path === "/manifest.webmanifest") {
+    h.set("Cache-Control", "public, max-age=3600");
+  }
 
   return res;
 }

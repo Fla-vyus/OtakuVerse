@@ -15,6 +15,7 @@ const TYPES = [
   { v: "manhwa", label: "Manhwa" },
   { v: "manhua", label: "Manhua" },
   { v: "lightnovel", label: "Light Novel" },
+  { v: "webnovel", label: "Webnovel" },
   { v: "anime", label: "Anime" },
 ];
 

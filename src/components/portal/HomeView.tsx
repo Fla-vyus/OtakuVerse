@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { ChevronLeft, ChevronRight, Flame, Star, Sparkles, Trophy, Rocket, CalendarDays, Newspaper, Gauge, Layers, BookOpen, Clock, TrendingUp, BookMarked, Check } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ChevronLeft, ChevronRight, Flame, Star, Sparkles, Trophy, Rocket, CalendarDays, Newspaper, Gauge, Layers, BookOpen, Clock, TrendingUp, BookMarked, Check, Globe } from "lucide-react";
 import { usePortal, HYPE_MODES } from "./store";
 import { CardRow, WorkCard, CardSkeleton } from "./WorkCard";
 import { fetchJSON } from "@/lib/fetchClient";
@@ -340,7 +340,7 @@ function MagazineRow({ magazines }: { magazines: MagEntry[] }) {
   );
 }
 
-const SECTIONS_CACHE_KEY = "ov-sections-v2";
+const SECTIONS_CACHE_KEY = "ov-sections-v3"; // v3: { core, more, sales, mags } — fases
 const SECTIONS_CACHE_TTL = 30 * 60_000;
 // carrossel Hype também hidrata instantâneo — era a última seção "oco" ao reabrir o site
 const HYPE_CACHE_PREFIX = "ov-hype-v1-";
@@ -361,34 +361,65 @@ function writeHypeCache(mode: string, items: WorkData[]) {
 }
 
 export function HomeView() {
-  const [data, setData] = useState<{
-    launches: WorkData[]; newMangas: WorkData[]; hits: WorkData[]; bestsellers: WorkData[]; masterpieces: WorkData[];
-    ecchiHits: WorkData[]; manhwaHits: WorkData[]; animePicks: WorkData[];
-    monthLaunches: WorkData[]; news: NewsItem[]; counts: { total: number };
-    chapterReleases: ChapterRelease[];
-  } | null>(null);
+  // CARREGAMENTO EM FASES — a home não baixa tudo de uma vez:
+  //   Fase 1 (imediata):   /api/sections?part=core → Notícias + Lançamentos + Mangás Novos + Capítulos
+  //   Fase 2 (sob demanda): /api/sections?part=more + /api/sales + /api/magazines — disparadas quando
+  //     o usuário rola até a sentinela (IntersectionObserver) ou após alguns segundos de folga.
+  // Reabrir o site hidrata TODAS as fases do sessionStorage na hora (sem loading).
+  interface CoreData {
+    launches: WorkData[]; newMangas: WorkData[]; chapterReleases: ChapterRelease[];
+    news: NewsItem[]; counts: { total: number };
+  }
+  interface MoreData {
+    hits: WorkData[]; bestsellers: WorkData[]; masterpieces: WorkData[]; ecchiHits: WorkData[];
+    manhwaHits: WorkData[]; animePicks: WorkData[]; monthLaunches: WorkData[]; webnovelPicks: WorkData[];
+  }
+  const [core, setCore] = useState<CoreData | null>(null);
+  const [more, setMore] = useState<MoreData | null>(null);
   const [sales, setSales] = useState<{ volumes: SaleItem[]; series: SaleItem[] } | null>(null);
   const [mags, setMags] = useState<{ magazines: MagEntry[] } | null>(null);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
+  const moreRequested = useRef(false);
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
   const openExplore = usePortal((s) => s.openExplore);
   const go = usePortal((s) => s.go);
   const openWork = usePortal((s) => s.openWork);
   const user = usePortal((s) => s.user);
+
+  // FASE 2 — uma única vez por montagem (single-flight via ref); vendas/revistas vão junto
+  const loadMorePhase = useCallback(() => {
+    if (moreRequested.current) return;
+    moreRequested.current = true;
+    fetchJSON("/api/sections?part=more").then((d) => {
+      if (d?.ok) {
+        setMore({
+          hits: d.hits ?? [], bestsellers: d.bestsellers ?? [], masterpieces: d.masterpieces ?? [],
+          ecchiHits: d.ecchiHits ?? [], manhwaHits: d.manhwaHits ?? [], animePicks: d.animePicks ?? [],
+          monthLaunches: d.monthLaunches ?? [], webnovelPicks: d.webnovelPicks ?? [],
+        });
+      }
+    });
+    fetchJSON("/api/sales").then((d) => { if (d?.ok) setSales(d); });
+    fetchJSON("/api/magazines").then((d) => { if (d?.ok) setMags(d); });
+  }, []);
 
   useEffect(() => {
     let alive = true;
     let hydrated = false;
 
     const hydrateTimer = setTimeout(() => {
-      // hidratação instantânea do último feed conhecido (reabrir o site = home imediata, sem loading)
+      // hidratação instantânea: as DUAS fases abrem juntas do cache (reabrir o site = home imediata)
       try {
         const raw = sessionStorage.getItem(SECTIONS_CACHE_KEY);
         if (raw) {
           const cached = JSON.parse(raw);
-          if (cached?.at && Date.now() - cached.at < SECTIONS_CACHE_TTL && cached?.data?.ok) {
-            setData(cached.data);
+          if (cached?.at && Date.now() - cached.at < SECTIONS_CACHE_TTL && cached?.core) {
+            setCore(cached.core);
+            if (cached.more) setMore(cached.more);
+            if (cached.sales) setSales(cached.sales);
+            if (cached.mags) setMags(cached.mags);
             setLoading(false);
             hydrated = true;
           }
@@ -396,29 +427,94 @@ export function HomeView() {
       } catch {}
     }, 0);
 
-    async function loadSections() {
-      const d = await fetchJSON("/api/sections");
+    // FASE 1 — o essencial da primeira dobra
+    async function loadCore() {
+      const d = await fetchJSON("/api/sections?part=core");
       if (!alive) return;
       if (d?.ok) {
-        setData(d);
+        const c: CoreData = {
+          launches: d.launches ?? [], newMangas: d.newMangas ?? [], chapterReleases: d.chapterReleases ?? [],
+          news: d.news ?? [], counts: d.counts ?? { total: 0 },
+        };
+        setCore(c);
         setFailed(false);
-        try { sessionStorage.setItem(SECTIONS_CACHE_KEY, JSON.stringify({ at: Date.now(), data: d })); } catch {}
+        // guarda na sessão preservando as fases que já chegaram
+        try {
+          const prev = JSON.parse(sessionStorage.getItem(SECTIONS_CACHE_KEY) ?? "{}");
+          sessionStorage.setItem(SECTIONS_CACHE_KEY, JSON.stringify({ at: Date.now(), core: c, more: prev.more, sales: prev.sales, mags: prev.mags }));
+        } catch {}
       } else if (!hydrated) {
         // só marca falha se NEM cache havia — home nunca fica oca em silêncio
         setFailed(true);
       }
       setLoading(false);
     }
-    loadSections();
+    loadCore();
 
-    fetchJSON("/api/sales").then((d) => { if (alive && d?.ok) setSales(d); });
-    fetchJSON("/api/magazines").then((d) => { if (alive && d?.ok) setMags(d); });
+    // reabertura com cache: revalida a fase 2 em background após 2,5s (sem piscar nada)
+    const idleTimer = setTimeout(() => {
+      if (hydrated) {
+        fetchJSON("/api/sections?part=more").then((d) => {
+          if (alive && d?.ok) {
+            setMore({
+              hits: d.hits ?? [], bestsellers: d.bestsellers ?? [], masterpieces: d.masterpieces ?? [],
+              ecchiHits: d.ecchiHits ?? [], manhwaHits: d.manhwaHits ?? [], animePicks: d.animePicks ?? [],
+              monthLaunches: d.monthLaunches ?? [], webnovelPicks: d.webnovelPicks ?? [],
+            });
+          }
+        });
+      }
+    }, 2_500);
 
     return () => {
       alive = false;
       clearTimeout(hydrateTimer);
+      clearTimeout(idleTimer);
     };
   }, [attempt]);
+
+  // Sentinela: o fim da fase 1 entrando na tela pede a fase 2 ao servidor.
+  // Sem IntersectionObserver (ou tela muito alta): fallback por tempo ocioso.
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el || typeof IntersectionObserver === "undefined") {
+      const t = setTimeout(loadMorePhase, 3_500);
+      return () => clearTimeout(t);
+    }
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) loadMorePhase();
+      },
+      { rootMargin: "600px 0px" } // começa a buscar ANTES de o usuário ver o fim
+    );
+    io.observe(el);
+    const t = setTimeout(loadMorePhase, 6_000); // rede de segurança (cache hidratado, tela alta…)
+    return () => { io.disconnect(); clearTimeout(t); };
+  }, [loadMorePhase]);
+
+  // fase 2 ainda não veio (rede caiu) → tenta de novo quando a conexão voltar
+  useEffect(() => {
+    if (more) return;
+    const on = () => loadMorePhase();
+    window.addEventListener("online", on);
+    return () => window.removeEventListener("online", on);
+  }, [more, loadMorePhase]);
+
+  // persiste as fases no cache da sessão conforme chegam
+  useEffect(() => {
+    if (!more) return;
+    try {
+      const prev = JSON.parse(sessionStorage.getItem(SECTIONS_CACHE_KEY) ?? "{}");
+      sessionStorage.setItem(SECTIONS_CACHE_KEY, JSON.stringify({ at: Date.now(), core: prev.core, more, sales: prev.sales, mags: prev.mags }));
+    } catch {}
+  }, [more]);
+  useEffect(() => {
+    if (!sales && !mags) return;
+    try {
+      const prev = JSON.parse(sessionStorage.getItem(SECTIONS_CACHE_KEY) ?? "{}");
+      sessionStorage.setItem(SECTIONS_CACHE_KEY, JSON.stringify({ at: Date.now(), core: prev.core, more: prev.more, sales: sales ?? prev.sales, mags: mags ?? prev.mags }));
+    } catch {}
+  }, [sales, mags]);
 
   function retry() {
     setFailed(false);
@@ -444,6 +540,7 @@ export function HomeView() {
     { label: "Manhwas", type: "manhwa", emoji: "🇰🇷" },
     { label: "Manhuas", type: "manhua", emoji: "🇨🇳" },
     { label: "Light Novels", type: "lightnovel", emoji: "📚" },
+    { label: "Webnovels", type: "webnovel", emoji: "🌐" },
     { label: "Animes", type: "anime", emoji: "🎬" },
     { label: "Ecchi", type: "all", classification: "suggestive", emoji: "🔥" },
   ];
@@ -471,7 +568,7 @@ export function HomeView() {
         ))}
       </div>
 
-      {loading && !data && (
+      {loading && !core && (
         <div aria-hidden>
           <div className="skel mb-6 h-24 rounded-2xl" />
           <div className="no-scrollbar flex gap-3 overflow-hidden pb-2">
@@ -494,35 +591,42 @@ export function HomeView() {
         </div>
       )}
 
-      {data && (
+      {core && (
         <>
-          {data.news?.length > 0 && <NewsTeaser news={data.news} />}
+          {core.news?.length > 0 && <NewsTeaser news={core.news} />}
 
           <section className="cv-auto">
             <SectionHeader icon={<Rocket className="h-4 w-4" />} title="Lançamentos Recentes" sub="Estreias fresquinhas dos últimos 90 dias" action={
               <button onClick={() => openExplore({ sort: "new", q: "" })} className="flex items-center gap-1 text-xs font-bold text-primary hover:underline">ver todos <ChevronRight className="h-3.5 w-3.5" /></button>
             } />
-            <CardRow items={data.launches} />
+            <CardRow items={core.launches} />
           </section>
 
-          {data.newMangas?.length > 0 && (
+          {core.newMangas?.length > 0 && (
             <section className="cv-auto">
               <SectionHeader icon={<Sparkles className="h-4 w-4" />} title="Mangás Novos — Acabaram de Chegar" sub="Começaram a publicar agora: seja o primeiro a acompanhar desde o capítulo 1" action={
                 <button onClick={() => openExplore({ sort: "new", type: "manga", q: "" })} className="flex items-center gap-1 text-xs font-bold text-primary hover:underline">ver todos <ChevronRight className="h-3.5 w-3.5" /></button>
               } />
-              <CardRow items={data.newMangas} />
+              <CardRow items={core.newMangas} />
             </section>
           )}
 
-          {data.chapterReleases?.length > 0 && (
+          {core.chapterReleases?.length > 0 && (
             <section className="cv-auto">
               <SectionHeader icon={<Clock className="h-4 w-4" />} title="Lançamentos de Capítulos" sub="Próximos capítulos das séries que você acompanha — estimativa semanal das séries ativas" action={
                 <button onClick={() => go("calendar")} className="flex items-center gap-1 text-xs font-bold text-primary hover:underline">calendário completo <ChevronRight className="h-3.5 w-3.5" /></button>
               } />
-              <ChapterWeekStrip releases={data.chapterReleases} />
+              <ChapterWeekStrip releases={core.chapterReleases} />
             </section>
           )}
 
+          {/* SENTINELA do carregamento em fases: ao entrar na tela (ou 600px antes),
+              a fase 2 é pedida ao servidor — Vendas, Revistas, Bombando, Top, Obras-Primas,
+              Manhwas, Ecchi, Animes, Webnovels e Agenda chegam quando o usuário realmente rola. */}
+          <div ref={sentinelRef} aria-hidden className="h-px w-full" />
+
+          {more && (
+          <>
           {sales && sales.volumes.length > 0 && (
             <section className="cv-auto">
               <SectionHeader icon={<Layers className="h-4 w-4" />} title="Vendas: Volumes Mais Vendidos" sub="Rankings reais da Oricon — os volumes individuais campeões de cada ano" action={
@@ -597,59 +701,70 @@ export function HomeView() {
             <SectionHeader icon={<Flame className="h-4 w-4" />} title="Bombando: Novos Hits" sub="Em andamento, poucos capítulos publicados e já febre entre os leitores" action={
               <button onClick={() => openExplore({ sort: "new", status: "RELEASING", q: "" })} className="flex items-center gap-1 text-xs font-bold text-primary hover:underline">explorar <ChevronRight className="h-3.5 w-3.5" /></button>
             } />
-            <CardRow items={data.hits} />
+            <CardRow items={more.hits} />
           </section>
 
           <section className="cv-auto">
             <SectionHeader icon={<Trophy className="h-4 w-4" />} title="Top Popularidade" sub="As obras mais favoritadas de todos os tempos" action={
               <button onClick={() => openExplore({ sort: "favorites", q: "" })} className="flex items-center gap-1 text-xs font-bold text-primary hover:underline">ranking completo <ChevronRight className="h-3.5 w-3.5" /></button>
             } />
-            <CardRow items={data.bestsellers} ranks />
+            <CardRow items={more.bestsellers} ranks />
           </section>
 
-          {data.masterpieces?.length > 0 && (
+          {more.masterpieces?.length > 0 && (
             <section className="cv-auto">
               <SectionHeader icon={<Star className="h-4 w-4" />} title="Obras-Primas" sub="As melhores notas de todos os tempos — patrimônio do meio" action={
                 <button onClick={() => openExplore({ sort: "score", q: "" })} className="flex items-center gap-1 text-xs font-bold text-primary hover:underline">ver todas <ChevronRight className="h-3.5 w-3.5" /></button>
               } />
-              <CardRow items={data.masterpieces} />
+              <CardRow items={more.masterpieces} />
             </section>
           )}
 
-          {data.manhwaHits?.length > 0 && (
+          {more.manhwaHits?.length > 0 && (
             <section className="cv-auto">
               <SectionHeader icon={<Gauge className="h-4 w-4" />} title="Manhwas em Alta" sub="Coreia dominando: os webtoons mais acompanhados" action={
                 <button onClick={() => openExplore({ type: "manhwa", q: "" })} className="flex items-center gap-1 text-xs font-bold text-primary hover:underline">todos <ChevronRight className="h-3.5 w-3.5" /></button>
               } />
-              <CardRow items={data.manhwaHits} />
+              <CardRow items={more.manhwaHits} />
             </section>
           )}
 
-          {data.ecchiHits?.length > 0 && (
+          {more.ecchiHits?.length > 0 && (
             <section className="cv-auto">
               <SectionHeader icon={<Flame className="h-4 w-4" />} title="Ecchi/Sensorial em Alta" sub="Picantes de bom gosto — arte bonita e clima quente (etiquetados)" action={
                 <button onClick={() => openExplore({ classification: "suggestive", q: "" })} className="flex items-center gap-1 text-xs font-bold text-primary hover:underline">explorar <ChevronRight className="h-3.5 w-3.5" /></button>
               } />
-              <CardRow items={data.ecchiHits} />
+              <CardRow items={more.ecchiHits} />
             </section>
           )}
 
-          {data.animePicks?.length > 0 && (
+          {more.animePicks?.length > 0 && (
             <section className="cv-auto">
               <SectionHeader icon={<Sparkles className="h-4 w-4" />} title="Animes do Momento" sub="Os mais amados da tela para a sua telinha" action={
                 <button onClick={() => openExplore({ type: "anime", q: "" })} className="flex items-center gap-1 text-xs font-bold text-primary hover:underline">todos <ChevronRight className="h-3.5 w-3.5" /></button>
               } />
-              <CardRow items={data.animePicks} />
+              <CardRow items={more.animePicks} />
             </section>
           )}
 
-          {data.monthLaunches.length > 0 && (
+          {more.webnovelPicks?.length > 0 && (
+            <section className="cv-auto">
+              <SectionHeader icon={<Globe className="h-4 w-4" />} title="Webnovels em Alta" sub="Romances de capítulos que nasceram na internet — Royal Road, Naver, Qidian e mais (MangaUpdates)" action={
+                <button onClick={() => openExplore({ type: "webnovel", q: "" })} className="flex items-center gap-1 text-xs font-bold text-primary hover:underline">todos <ChevronRight className="h-3.5 w-3.5" /></button>
+              } />
+              <CardRow items={more.webnovelPicks} />
+            </section>
+          )}
+
+          {more.monthLaunches.length > 0 && (
             <section className="cv-auto">
               <SectionHeader icon={<CalendarDays className="h-4 w-4" />} title="Agenda do Mês" sub="Estreias e retornos programados para este mês" action={
                 <button onClick={() => go("calendar")} className="flex items-center gap-1 text-xs font-bold text-primary hover:underline">abrir calendário <ChevronRight className="h-3.5 w-3.5" /></button>
               } />
-              <CardRow items={data.monthLaunches} />
+              <CardRow items={more.monthLaunches} />
             </section>
+          )}
+          </>
           )}
         </>
       )}
@@ -674,10 +789,10 @@ export function HomeView() {
       </section>
 
       {/* stats do catálogo */}
-      {data && (
+      {core && (
         <p className="flex items-center justify-center gap-2 text-center text-[11px] text-muted-foreground">
           <Gauge className="h-3.5 w-3.5" />
-          Catálogo com {data.counts.total.toLocaleString("pt-BR")} obras reais · atualização automática a cada 30 min · busque mais via Explorar
+          Catálogo com {core.counts.total.toLocaleString("pt-BR")} obras reais · atualização automática a cada 30 min · busque mais via Explorar
         </p>
       )}
     </div>

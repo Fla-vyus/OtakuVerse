@@ -1,0 +1,24 @@
+{
+  "name": "OtakuVerse — Mangás, Manhwas, Webnovels e Animes",
+  "short_name": "OtakuVerse",
+  "description": "Portal brasileiro para garimpar mangás, manhwas, manhuas, light novels, webnovels e animes: catálogo real com dezenas de milhares de obras, hype do momento, vendas (Oricon), revistas, calendário, notícias e a waifu curadora Aoi.",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0a1120",
+  "theme_color": "#2563eb",
+  "lang": "pt-BR",
+  "dir": "ltr",
+  "categories": ["entertainment", "books"],
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Explorar catálogo", "short_name": "Explorar", "url": "/#/explorar", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Calendário de lançamentos", "short_name": "Calendário", "url": "/#/calendario", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Notícias", "short_name": "Notícias", "url": "/#/noticias", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] }
+  ]
+}

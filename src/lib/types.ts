@@ -1,5 +1,5 @@
 // Tipos compartilhados entre servidor e cliente
-export type WorkType = "manga" | "manhwa" | "manhua" | "lightnovel" | "anime" | "drama";
+export type WorkType = "manga" | "manhwa" | "manhua" | "lightnovel" | "webnovel" | "anime" | "drama";
 export type Classification = "safe" | "suggestive" | "adult";
 
 export interface TagRef {
@@ -79,6 +79,7 @@ export const TYPE_LABEL: Record<WorkType, string> = {
   manhwa: "Manhwa",
   manhua: "Manhua",
   lightnovel: "Light Novel",
+  webnovel: "Webnovel",
   anime: "Anime",
   drama: "Drama",
 };
@@ -96,6 +97,7 @@ export const TYPE_COLORS: Record<WorkType, string> = {
   manhwa: "bg-purple-100 text-purple-700 border-purple-300 dark:bg-purple-500/15 dark:text-purple-300 dark:border-purple-500/30",
   manhua: "bg-amber-100 text-amber-700 border-amber-300 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/30",
   lightnovel: "bg-cyan-100 text-cyan-700 border-cyan-300 dark:bg-cyan-500/15 dark:text-cyan-300 dark:border-cyan-500/30",
+  webnovel: "bg-teal-100 text-teal-700 border-teal-300 dark:bg-teal-500/15 dark:text-teal-300 dark:border-teal-500/30",
   anime: "bg-sky-100 text-sky-700 border-sky-300 dark:bg-sky-500/15 dark:text-sky-300 dark:border-sky-500/30",
   drama: "bg-rose-100 text-rose-700 border-rose-300 dark:bg-rose-500/15 dark:text-rose-300 dark:border-rose-500/30",
 };

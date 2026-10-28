@@ -110,10 +110,42 @@ export async function GET(req: NextRequest) {
       .slice(0, 24);
 
     // 7) Ecchi/Sensorial em alta (gosto do usuário: ecchi + boa arte + história)
-    const ecchiHits = all
-      .filter((w) => w.classification === "suggestive" && w.cover)
-      .sort((a, b) => (b.favourites ?? 0) - (a.favourites ?? 0))
-      .slice(0, 24);
+    //    Ecchi DE VERDADE: gênero oficial "Ecchi" da AniList (dado primário) ou fan-service
+    //    pervasivo (Nudity rank >= 75). Antes bastava classification=suggestive — obras com
+    //    cenas pontuais de nudez (Berserk 66, Chainsaw Man 57, Evangelion 55, Black Clover 45)
+    //    dominavam a fileira por favoritos e viravam recomendação errada; o rank de Nudity não
+    //    separa (Mushoku P2 tem 41 e é ecchi), só o gênero separa (891 obras no acervo).
+    //    Dedupe de franquia: mangá+anime da mesma série não podem ocupar 2 cards.
+    const isRealEcchi = (w: WorkData) =>
+      w.genres.includes("Ecchi") || w.tags.some((t) => t.name === "Nudity" && t.rank >= 75);
+    const franquia = (w: WorkData) => {
+      const base = w.title.split(/[:(/]/)[0].toLowerCase().replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
+      // sequências: "Mushoku Tensei II", "... Part 2", "Code Geass ... R2", "Temporada 3" → mesma base
+      return base.replace(/ (part|season|temporada|s)?\s*(i{1,3}|iv|vi{1,3}|xi{0,3}|\d+|r\d+)$/i, "").trim() || base;
+    };
+    const seenFranchise = new Set<string>();
+    const ecchiHits: WorkData[] = [];
+    for (const w of all
+      .filter((x) => x.classification === "suggestive" && x.cover && isRealEcchi(x))
+      .sort((a, b) => (b.favourites ?? 0) - (a.favourites ?? 0))) {
+      const key = franquia(w);
+      if (seenFranchise.has(key)) continue;
+      seenFranchise.add(key);
+      ecchiHits.push(w);
+      if (ecchiHits.length >= 24) break;
+    }
+    // segurança: acervo pequeno → completa com o resto do suggestive (nunca fica vazia)
+    if (ecchiHits.length < 24) {
+      for (const w of all
+        .filter((x) => x.classification === "suggestive" && x.cover)
+        .sort((a, b) => (b.favourites ?? 0) - (a.favourites ?? 0))) {
+        if (ecchiHits.length >= 24) break;
+        const key = franquia(w);
+        if (seenFranchise.has(key)) continue;
+        seenFranchise.add(key);
+        ecchiHits.push(w);
+      }
+    }
 
     // 8) Manhwas em alta (KR)
     const manhwaHits = all

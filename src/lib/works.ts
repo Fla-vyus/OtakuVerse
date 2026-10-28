@@ -318,19 +318,11 @@ export function filterWorks(all: WorkData[], f: WorkFilters): { items: WorkData[
   if (f.genre && f.genre !== "all") list = list.filter((w) => w.genres.includes(f.genre!));
   if (f.tag && f.tag !== "all") {
     // via índice (tags completas, rank >= 40): resultado completo — o pool trima para o
-    // top-15 de tags por obra e antes escondia obras legítimas do filtro.
-    // Gramática dos chips curados: "," = OU entre grupos · "+" = E dentro do grupo.
-    // Ex.: "Reincarnation+Female Protagonist,Villainess" = (Reinc. E Protag. Feminina) OU Vilã.
-    const groups = f.tag
-      .split(",")
-      .map((g) => g.split("+").map((t) => t.trim()).filter(Boolean))
-      .filter((g) => g.length > 0);
-    const idSets = groups.map((g) => g.map((t) => f.tagIndex?.get(t)));
-    list = list.filter((w) =>
-      groups.some((_, i) => idSets[i].every((s) => s && s.has(w.id))) ||
-      (idSets.every((sets) => sets.every((s) => !s)) &&
-        w.tags.some((t) => t.rank >= TAG_INDEX_MIN_RANK && groups.some((g) => g.includes(t.name))))
-    );
+    // top-15 de tags por obra e antes escondia obras legítimas do filtro
+    const ids = f.tagIndex?.get(f.tag);
+    list = ids
+      ? list.filter((w) => ids.has(w.id))
+      : list.filter((w) => w.tags.some((t) => t.name === f.tag && t.rank >= TAG_INDEX_MIN_RANK));
   }
   if (f.status && f.status !== "all") list = list.filter((w) => w.status === f.status);
   if (f.classification && f.classification !== "all") list = list.filter((w) => w.classification === f.classification);

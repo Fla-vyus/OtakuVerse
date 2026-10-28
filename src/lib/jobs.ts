@@ -45,9 +45,23 @@ async function gitCommitSnapshots() {
   }
 }
 
+/** Guarda de memória: jobs pesados (snapshot/vault/backup) são filhos node de
+ *  centenas de MB — se o servidor já está acima do limiar, ADIA o job para o
+ *  próximo ciclo em vez de disputar RAM e ser morto pelo OOM (site cai). */
+async function memOk(limitMB = 1400): Promise<boolean> {
+  const mem = process.memoryUsage();
+  const rss = Math.round(mem.rss / 1048576);
+  if (rss > limitMB) {
+    console.warn(`[jobs] memória ${rss}MB > ${limitMB}MB — job pesado adiado para o próximo ciclo`);
+    return false;
+  }
+  return true;
+}
+
 /** Snapshot git-safe (catálogo + contas + manifest verificado) — a cada 6h. */
 async function doSnapshot(reason = "6h") {
   if (Date.now() - (g.__ovLastSnapshotAt ?? 0) < SNAP_INTERVAL - 60_000) return;
+  if (!(await memOk())) return;
   try {
     const out = await runScript("scripts/catalog-snapshot.ts", 300_000);
     g.__ovLastSnapshotAt = Date.now();
@@ -62,6 +76,7 @@ async function doSnapshot(reason = "6h") {
  *  integrity_check do arquivo de backup. */
 async function doBackup() {
   try {
+    if (!(await memOk())) return;
     const today = new Date().toISOString().slice(0, 10);
     if (g.__ovLastBackupDay === today) return;
     const out = await runScript("scripts/db-backup.ts", 120_000);
@@ -100,6 +115,7 @@ async function autoRestore() {
  *  diretório inteiro do site for apagado. Roda após o snapshot git-safe. */
 async function doVault(reason = "6h") {
   try {
+    if (!(await memOk())) return;
     const out = await runScript("scripts/vault-sync.ts", 600_000);
     console.log(`[vault ${reason}]`, out.split("\n").filter((l) => l.startsWith("  ✓") || l.includes("COFRE")).slice(-3).join(" | "));
   } catch (e) {

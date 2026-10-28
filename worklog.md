@@ -67,3 +67,28 @@ Stage Summary:
 - Commits: 9d0e348 (resiliência), 9394a76 (backfill completo), 8ced71b (memória anti-OOM).
 - Arquivos-chave: scripts/{vault-sync,backfill-catalog,catalog-snapshot,catalog-restore,db-backup}.ts, src/lib/{jobs,works}.ts, src/app/{error,global-error}.tsx, src/app/api/{health,route}/route.ts, src/app/api/{sales,magazines,schedule,auth/me,auth/logout,cloud/export}/route.ts, next.config.ts.
 - Follow-ups: (1) build de produção quando ambiente permitir (mata o problema de memória do dev); (2) monitorar ciclo 6h snapshot→vault→auto-commit; (3) Kitsu coverAlt matching permanece melhoria futura.
+
+---
+Task ID: 10
+Agent: main (Z.ai)
+Task: v2.9 — usuário: site pesado/lento com loads demorados, mobile precisa melhorar (organização/tamanhos) SEM mexer no desktop, abrir site/opções em <2s, salvar tudo, pesquisar o que falta, várias auditorias e finalizar.
+
+Work Log:
+- PERF-AUDIT COM DADOS: curl em 14 rotas revelou o detalhe de obra a 1.263KB/433ms (related computava 55k obras por visita e voltava como objetos COMPLETOS), streaming 655KB, releases 323KB sem cache, calendar 392KB.
+- DETALHE 94% MENOR: computeRelatedCached (LRU 800 por adulto+id, invalida junto com o pool via poolVersion()) + related projetado com toCardWork (client só usa WorkCard) + caps byAuthor (3 autores × 12) + gating preservado (obra safe nunca mostra related adulto). 1.263KB→75.6KB, 433ms→22ms quente.
+- PAYLOADS: streaming/releases/schedule com toCardWork (−60~80%). Rotas MORTAS removidas: /api/home, /api/calendar, /api/releases e ReleasesView (nenhum consumidor confirmado por busca).
+- FONTE DOS 8.5s DESCOBERTA: dev-mode compila cada rota na 1ª visita. Fix: warmUpRoutes() no boot (o servidor se visita após subir — compila tudo antes do 1º usuário) + experimental.turbopackFileSystemCacheForDev (artefatos em disco entre restarts: warm-up 5x mais rápido) + NODE_OPTIONS fixado no npm run dev (não se perde mais em restart).
+- PREFETCH: hover/focus/touchstart em WorkCard/ForYouCard dispara prefetchWork() (dedupe de promise + LRU 60) — DetailView consome o MESMO promise; abrir obra fica instantâneo.
+- DEDUP CRÍTICO: Explorar mostrava obras 2× (capa real + gêmeo placeholder). Causa: backfill v2.8 criava id "anilist-XXXX" sobre ids numéricos existentes — 18.234 gêmeos (todos SEM capa) + 18.477 obras só-prefixadas. dedup-works.py: merge coalescente (sobrevivente herda só campos vazios), delete dos gêmeos, rename p/ numérico, re-point defensivo, integrity_check. 55.808→37.574 obras ÚNICAS (zero perda de obra). backfill-catalog.ts corrigido (id numérico puro + have normalizado) + alias anilist- em getWorkById p/ links antigos. spicy re-alinhado à classification: 35.238 safe/1.801 suggestive/535 adult.
+- MOBILE (desktop intacto — só classes base/responsive): Explorar+CardGrid 3 colunas (cards menores, mais densidade), botões de status do detalhe compactos em 1 linha (Quero/Lendo/Favorito), mês do calendário sem o bug "Outubro De 2026" (capitalize CSS → primeira-letra), devIndicators: false (bolha "N" do dev cobria a bottom nav).
+- STREAMING INTEGRADA: StreamingView era órfã (nunca renderizada) — virou view #/streaming no NAV (MonitorPlay), fetchJSON + painel "Tentar novamente", dedupe de entradas no mesmo grupo (2 links YouTube = key duplicada → 0 erros de console).
+- ANTI-QUEDA DE VERDADE: OOM matou o servidor 2× (jobs pesados + browser = RAM da box). Fix: memOk() adia snapshot/vault/backup se RSS>1.4GB (tenta no próximo ciclo) + keepalive.sh daemon (health 2× → reinicia o servidor sozinho, log em keepalive.log).
+- AUDITORIAS: tsc 0, eslint 0, health healthy (pool 37.574, vault ok), dados salvos: snapshot git-safe 18.4MB sha256 ok + cofre externo 229.5MB em 6 formatos (histórico rotativo) + backup SQLite 77.1MB integrity ok + commits.
+- MEDIDO (browser real): ABRIR O SITE 958ms (era 8.5s+), navegação interna 129-666ms, aberturas diretas 313-524ms — TODAS <2s ✓. Mobile: home 306 imgs sem overflow, explorar 3-col com capas reais, detalhe com botões compactos, streaming 169 títulos, console 0 erros. Desktop: layout intacto + item Streaming na nav.
+- LIÇÃO: curl timeouts/erros em sequência = servidor morto por OOM — checar `ps aux | rg next-server` e dev.log antes de culpar rede; perf-audit.sh com tudo 0ms/0KB é a assinatura de servidor caído.
+
+Stage Summary:
+- OtakuVerse v2.9 = tudo <2s (site abre em ~1s até com compilação fria), payloads 60-94% menores, prefetch instantâneo, catálogo limpo (37.574 únicas, zero duplicatas, capas reais em toda a UI), StreamingView resgatada como página nova, mobile mais denso e organizado sem tocar no desktop, e o servidor agora se auto-protege de OOM e ressuscita sozinho.
+- Commit: 9ddedaa (v2.9 principal) + commit final (mem-guard + keepalive).
+- Arquivos-chave: src/lib/{works,jobs,schedule}.ts, src/app/api/works/[id]/route.ts, next.config.ts, package.json (dev script), src/components/portal/{store,WorkCard,DetailView,ExploreView,CalendarView,PortalApp,StreamingView}.tsx, scripts/{dedup-works.py,keepalive.sh,perf-audit.sh,load-times.js}, REMOVIDOS: /api/{home,calendar,releases}, ReleasesView.tsx.
+- Follow-ups: (1) build de produção continua sendo a cura definitiva de memória/velocidade quando o ambiente permitir; (2) cache SWR do browser segura payload velho por até 10min após deploy — nas próximas mudanças de payload, considerar versionar a rota; (3) Kitsu coverAlt matching segue como melhoria futura.

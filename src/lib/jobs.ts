@@ -19,16 +19,28 @@ const g = globalThis as unknown as {
 
 const SNAP_INTERVAL = 6 * 60 * 60 * 1000; // 6h — um reset no pior caso perde <6h de dados
 
-// BLINDAGEM v3.6 — raiz do projeto REAL: o servidor roda com cwd = .next/standalone
-// (renomeado pelo Next), mas os scripts e o repositório git vivem 2 níveis acima.
-// Antes, TODOS os jobs de durabilidade (backup/snapshot/vault/capas/webnovels)
-// falhavam em produção com ERR_MODULE_NOT_FOUND — ninguém percebeu porque o catch
-// engolia o erro e o site continuava de pé (sem backup nenhum!).
+// BLINDAGEM v3.7.2 — raiz do projeto via ENV determinística. Histórico da caça:
+//   v3.6: detecção por scripts/db-backup.ts → enganada (o turbopack file tracing
+//         copia scripts referenciados por string para .next/standalone);
+//   v3.7.1: detecção por prisma/schema.prisma → o código compilado está correto no
+//         chunk, POREM dentro do servidor em execução o existsSync do import
+//         estático se comporta de forma não confiável e a detecção ainda cai no
+//         cwd (comprovado: snapshot gravou em .next/standalone/data às 18:54).
+//   v3.7.2: deploy.sh/keepalive.sh EXPORTAM OTAKUVERSE_ROOT (raiz real). A função
+//         usa a env primeiro; a detecção por prisma/ fica só como fallback. E o
+//         caminho do script é sempre ABSOLUTO — acabou a ambiguidade de resolução.
 function projectRoot(): string {
+  const envRoot = process.env.OTAKUVERSE_ROOT ?? "";
+  if (envRoot && existsSync(`${envRoot}/prisma/schema.prisma`)) return envRoot;
   const cwd = process.cwd();
-  if (existsSync(`${cwd}/scripts/db-backup.ts`)) return cwd;
+  if (existsSync(`${cwd}/prisma/schema.prisma`)) return cwd;
   const up = resolve(cwd, "..", "..");
-  if (existsSync(`${up}/scripts/db-backup.ts`)) return up;
+  if (existsSync(`${up}/prisma/schema.prisma`)) return up;
+  let cur = cwd;
+  for (let i = 0; i < 4; i++) {
+    cur = resolve(cur, "..");
+    if (existsSync(`${cur}/prisma/schema.prisma`)) return cur;
+  }
   return cwd;
 }
 
@@ -36,8 +48,8 @@ async function runScript(script: string, timeout: number): Promise<string> {
   const { execFile } = await import("node:child_process");
   const { promisify } = await import("node:util");
   const root = projectRoot();
-  // tsx + node_modules do projeto (o standalone não tem nada disso)
-  const { stdout } = await promisify(execFile)("npx", ["tsx", script], { cwd: root, timeout });
+  // caminho ABSOLUTO + cwd na raiz: npx tsx acha node_modules do projeto e o script
+  const { stdout } = await promisify(execFile)("npx", ["tsx", `${root}/${script}`], { cwd: root, timeout });
   return stdout;
 }
 

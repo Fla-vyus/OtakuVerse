@@ -49,6 +49,12 @@ else
   log "AVISO: marcador 'sectionsCoreCache' ausente — build possivelmente stale"
 fi
 
+# 2.5) v3.7.1: o file tracing do turbopack copia scripts referenciados por string
+#      (ex.: scripts/db-backup.ts) para .next/standalone — isso ENGANA a detecção
+#      de raiz do projeto nos jobs (src/lib/jobs.ts projectRoot usa prisma/ como
+#      marcador agora, mas remover o diretório intruso evita qualquer ambiguidade).
+rm -rf .next/standalone/scripts 2>/dev/null || true
+
 # 3) Mata TUDO que possa servir na 3000 (next-server é o nome real do processo)
 log "parando servidor antigo…"
 pkill -f "next-server" 2>/dev/null
@@ -57,8 +63,10 @@ sleep 3
 
 # 4) Inicia com double-fork (sobrevive ao fim desta sessão bash).
 #    .env exportado (DATABASE_URL + CRON_KEY) — a rota /api/cron/tick depende da chave.
+#    v3.7.2: OTAKUVERSE_ROOT — raiz REAL do projeto para os jobs de fundo (src/lib/jobs.ts
+#    resolve scripts/backups/git a partir dela; o cwd do standalone engana a detecção).
 log "iniciando produção…"
-node -e "require('child_process').spawn('bash',['-c','set -a; source /home/z/my-project/.env; set +a; PORT=3000 NODE_ENV=production node /home/z/my-project/.next/standalone/server.js >> /home/z/my-project/server.log 2>&1'],{detached:true,stdio:'ignore'}).unref()"
+node -e "require('child_process').spawn('bash',['-c','set -a; source /home/z/my-project/.env; set +a; export OTAKUVERSE_ROOT=/home/z/my-project; PORT=3000 NODE_ENV=production node /home/z/my-project/.next/standalone/server.js >> /home/z/my-project/server.log 2>&1'],{detached:true,stdio:'ignore'}).unref()"
 
 # 5) Health check (até 60s)
 OK=0

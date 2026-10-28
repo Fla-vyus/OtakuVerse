@@ -41,3 +41,9 @@ scripts/seed-expand-progress.json
 .keepalive-pause
 agent-ctx/
 .npm/
+
+# --- LGPD v3.7.3: dados de usuários NUNCA em repo público ---
+data/accounts-snapshot.json.gz
+data/vault/
+*.db-wal
+*.db-shm

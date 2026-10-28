@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAllWorks, filterWorks, getFacets, toCardWork, peekTagIndex } from "@/lib/works";
 import { getSessionUser } from "@/lib/auth";
+import { gzipJson } from "@/lib/httpCache";
 
 export const dynamic = "force-dynamic";
 
@@ -31,7 +32,9 @@ export async function GET(req: NextRequest) {
       page: Number(sp.get("page") ?? 1),
       perPage: Number(sp.get("perPage") ?? 60),
     });
-    return NextResponse.json({
+    // gzipJson: 60-67KB de cards viajavam CRUS (Next não comprime Route Handlers) —
+    // com gzip caem para ~10KB. Sem cache público: rota sensível a sessão (zona adulta).
+    return gzipJson({
       ok: true,
       items: items.map(toCardWork),
       total,

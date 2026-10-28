@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getSessionUser } from "@/lib/auth";
 import { parseWork } from "@/lib/types";
+import { gzipJson } from "@/lib/httpCache";
 
 export const dynamic = "force-dynamic";
 
@@ -68,7 +69,9 @@ export async function GET(req: NextRequest) {
       return { w: p, s };
     });
     scored.sort((a, b) => b.s - a.s);
-    return NextResponse.json({ ok: true, items: scored.slice(0, 14).map((x) => x.w), taste: hasTaste });
+    // gzipJson: 14 obras completas com sinopse/tags (70KB cru) — gzip corta ~85%.
+    // Sem cache público: depende da biblioteca/sessão do usuário.
+    return gzipJson({ ok: true, items: scored.slice(0, 14).map((x) => x.w), taste: hasTaste });
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: e.message }, { status: 500 });
   }

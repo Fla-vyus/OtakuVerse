@@ -62,6 +62,20 @@ async function main() {
     unlinkSync(join(dir, f));
     console.log("rotacionado (removido):", f);
   }
+
+  // checkpoint do WAL: o -wal acumula writes desde o último checkpoint e, se crescer
+  // demais (vimos um de 178MB), um kill -9 do processo pode corromper a imagem do banco.
+  // TRUNCATE aplica tudo e zera o arquivo — mantém o banco compacto e seguro.
+  try {
+    const cp = await live.$queryRawUnsafe<any[]>("PRAGMA wal_checkpoint(TRUNCATE);");
+    const st = cp?.[0]?.busy ? "busy (tentará de novo no próximo backup)" : "ok";
+    let walMB = "?";
+    try { walMB = (statSync(dbPath + "-wal").size / 1024 / 1024).toFixed(1); } catch {}
+    console.log(`wal_checkpoint: ${st} (wal agora: ${walMB} MB)`);
+  } catch (e: any) {
+    console.log("wal_checkpoint pulado:", String(e?.message ?? e).slice(0, 80));
+  }
+
   await live.$disconnect();
 }
 

@@ -50,3 +50,4 @@ data/vault/
 
 # --- CI: re-adicionar quando o token tiver escopo workflow (git add -f .github/workflows/ci.yml) ---
 .github/workflows/
+.deploy-sim/

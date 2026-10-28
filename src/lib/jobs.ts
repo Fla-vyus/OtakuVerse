@@ -48,8 +48,9 @@ async function runScript(script: string, timeout: number): Promise<string> {
   const { execFile } = await import("node:child_process");
   const { promisify } = await import("node:util");
   const root = projectRoot();
-  // caminho ABSOLUTO + cwd na raiz: npx tsx acha node_modules do projeto e o script
-  const { stdout } = await promisify(execFile)("npx", ["tsx", `${root}/${script}`], { cwd: root, timeout });
+  // v3.7.4: node 24 roda TS nativamente — ZERO dependência de tsx/npx (o npx baixa
+  // da rede e MORRE em ambientes de deploy sem registro npm — comprovado no sim)
+  const { stdout } = await promisify(execFile)(process.execPath, [`${root}/${script}`], { cwd: root, timeout });
   return stdout;
 }
 
@@ -130,7 +131,7 @@ async function autoRestore() {
     if (!hasSnapshot) return;
     const { execFile } = await import("node:child_process");
     const { promisify } = await import("node:util");
-    const { stdout } = await promisify(execFile)("npx", ["tsx", "-e", `import {PrismaClient} from "@prisma/client"; const db = new PrismaClient(); db.work.count().then(async (n) => { console.log("COUNT=" + n); await db.$disconnect(); });`], { cwd: root, timeout: 60_000 });
+    const { stdout } = await promisify(execFile)(process.execPath, ["-e", `const {PrismaClient} = require("@prisma/client"); const db = new PrismaClient(); db.work.count().then(async (n) => { console.log("COUNT=" + n); await db.$disconnect(); });`], { cwd: root, timeout: 60_000 });
     const count = Number(/COUNT=(\d+)/.exec(stdout)?.[1] ?? 0);
     // Marca d'água: o manifest guarda a última contagem boa conhecida do snapshot.
     // O limiar fixo de 10k deixava passar perda PARCIAL (ex.: 37.574 → 24.807 passava
@@ -144,8 +145,15 @@ async function autoRestore() {
     const floor = expected > 10_000 ? Math.floor(expected * 0.9) : 10_000;
     if (count < floor) {
       console.log(`[restore] banco com ${count} obras (esperado ≥ ${floor}) — restaurando do snapshot git-safe…`);
-      const { stdout: out2 } = await promisify(execFile)("npx", ["tsx", "scripts/catalog-restore.ts", "--force"], { cwd: root, timeout: 600_000 });
+      const { stdout: out2 } = await promisify(execFile)(process.execPath, [`${root}/scripts/catalog-restore.ts`, "--force"], { cwd: root, timeout: 600_000 });
       console.log("[restore]", out2.split("\n").slice(-3).join(" | "));
+      // v3.7.4: o pool em memória fica preso no estado pós-boot (poucas obras) — o
+      // watchdog só cura pool VAZIO (0). Após restore, reconstrói o pool NA HORA,
+      // senão o site fresco fica com ~14 obras por 15min (TTL) — comprovado no sim.
+      const worksMod = await import("@/lib/works");
+      worksMod.forceRebuild()
+        .then((c) => console.log(`[restore] pool reconstruído: ${c.works.length} obras`))
+        .catch((e) => console.error("[restore] rebuild pós-restore falhou:", (e as Error).message));
     }
   } catch (e) {
     console.error("[restore] falhou (segue o baile):", (e as Error).message);
@@ -189,8 +197,10 @@ async function watchdog() {
     else if (rssMB > 1100) issues.push(`memória alta (${rssMB}MB)`);
     if (issues.length) console.warn(`[watchdog] atenção: ${issues.join(" · ")}`);
     else console.log(`[watchdog] ok — banco ${dbMs}ms, pool ${works} obras, rss ${rssMB}MB`);
-    // cura ativa: banco responde rápido + pool vazio → reconstrói agora
-    if (works === 0 && dbMs < 2000) {
+    // cura ativa: banco responde rápido + pool vazio/quase vazio → reconstrói agora
+    // (v3.7.4: <500 em vez de ===0 — boot frio pós-restore começa com poucas obras
+    // e ficava "saudável" com catálogo ralo; 40k obras é o estado legítimo deste site)
+    if (works < 500 && dbMs < 2000) {
       const now = Date.now();
       if (now - (g.__ovWatchdogHealedAt ?? 0) > 5 * 60_000) {
         g.__ovWatchdogHealedAt = now;

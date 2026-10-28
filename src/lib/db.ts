@@ -8,6 +8,16 @@ function createClient() {
   const client = new PrismaClient({ log: ['error'] })
   // Isolamento SQLite: esperamos por lock (busy_timeout) e ligamos as FKs
   // (ON DELETE CASCADE de User → Session/LibraryItem/ShelfEntry/UserList).
+  // WAL: leitores não bloqueiam a escrita e a escrita não bloqueia leitores
+  // (backup/cron/nuvem rodando junto com visitas ao site deixam de dar
+  // "database is busy"; pesquisa: padrão recomendado para SQLite em produção
+  // read-heavy, com synchronous=NORMAL como equilíbrio segurança/velocidade).
+  client
+    .$queryRawUnsafe('PRAGMA journal_mode = WAL;')
+    .catch(() => {})
+  client
+    .$queryRawUnsafe('PRAGMA synchronous = NORMAL;')
+    .catch(() => {})
   client
     .$queryRawUnsafe('PRAGMA foreign_keys = ON;')
     .catch(() => {})

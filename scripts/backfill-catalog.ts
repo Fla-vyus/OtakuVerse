@@ -128,6 +128,9 @@ function classifyOf(m) {
     // spicy sincronizado desde o nascimento (camada sensorial: 0 livre · 1 ecchi · 2 adulto)
     return { classification: "adult", adultTags: JSON.stringify(["+18", "Adulto"]), spicy: 2 };
   }
+  // gênero "Ecchi" ⇒ suggestive (mesma regra de src/lib/works.ts e fix-ecchi-genre.ts —
+  // sem ela o backfill recriava obras ecchi como "safe" e elas sumiam do filtro)
+  if ((m.genres ?? []).includes("Ecchi")) return { classification: "suggestive", adultTags: "[]", spicy: 1 };
   const has = (n) => tags.some((t) => t.name === n);
   if (has("Ecchi") || has("Nudity") || has("Sexual Content")) {
     return { classification: "suggestive", adultTags: "[]", spicy: 1 };

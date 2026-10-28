@@ -1,5 +1,6 @@
 // Medição real de tempo-para-conteúdo (meta <2s) — sessão única, sequencial.
 // Para cada view: navega com cache de página novo, faz polling do 1º conteúdo real.
+/* eslint-disable @typescript-eslint/no-require-imports */
 const { execSync } = require("child_process");
 
 function sh(cmd) { return execSync(cmd, { stdio: "pipe" }).toString(); }

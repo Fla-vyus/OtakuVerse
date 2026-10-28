@@ -5,6 +5,7 @@ import { Search, SlidersHorizontal, ChevronLeft, ChevronRight, Compass, Lock, Fl
 import { usePortal, DEFAULT_FILTERS } from "./store";
 import { CardGrid } from "./WorkCard";
 import { fetchJSON } from "@/lib/fetchClient";
+import { FAMOUS_TAGS } from "@/lib/tags";
 import { Input } from "@/components/ui/input";
 import type { WorkData } from "@/lib/types";
 
@@ -135,7 +136,7 @@ export function ExploreView() {
     if (filters.q) chips.push({ label: `"${filters.q}"`, clear: () => setFilters({ q: "" }) });
     if (filters.type !== "all") chips.push({ label: TYPES.find((t) => t.v === filters.type)?.label ?? filters.type, clear: () => setFilters({ type: "all" }) });
     if (filters.genre !== "all") chips.push({ label: filters.genre, clear: () => setFilters({ genre: "all" }) });
-    if (filters.tag !== "all") chips.push({ label: filters.tag, clear: () => setFilters({ tag: "all" }) });
+    if (filters.tag !== "all") chips.push({ label: FAMOUS_TAGS.find((t) => t.tag === filters.tag)?.label ?? filters.tag, clear: () => setFilters({ tag: "all" }) });
     if (filters.status !== "all") chips.push({ label: STATUSES.find((s) => s.v === filters.status)?.label ?? filters.status, clear: () => setFilters({ status: "all" }) });
     if (filters.classification !== "all") chips.push({ label: filters.classification === "suggestive" ? "Ecchi/Sensorial" : filters.classification, clear: () => setFilters({ classification: "all" }) });
     if (filters.lang !== "all") chips.push({ label: LANGS.find((l) => l.v === filters.lang)?.label ?? filters.lang, clear: () => setFilters({ lang: "all" }) });
@@ -198,6 +199,24 @@ export function ExploreView() {
         >
           <Flame className="h-3.5 w-3.5" /> Ecchi/Sensorial
         </button>
+      </div>
+
+      {/* tags famosas — atalhos curados para os temas mais buscados do mundo otaku */}
+      <div className="no-scrollbar flex gap-2 overflow-x-auto pb-1" aria-label="Tags famosas">
+        {FAMOUS_TAGS.map((t) => {
+          const active = filters.tag === t.tag;
+          return (
+            <button
+              key={t.tag}
+              onClick={() => setFilters({ tag: active ? "all" : t.tag })}
+              className={`shrink-0 rounded-full px-3 py-1 text-xs font-bold transition ${
+                active ? "bg-primary text-primary-foreground shadow" : "border border-border bg-card text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {t.label}
+            </button>
+          );
+        })}
       </div>
 
       {/* filtros avançados */}

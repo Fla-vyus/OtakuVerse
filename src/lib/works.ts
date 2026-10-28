@@ -7,6 +7,10 @@ interface Cache {
   works: WorkData[];
   builtAt: number;
   maxUpdatedAt: number;
+  /** Índice nome-de-tag → ids de obras (rank >= TAG_INDEX_MIN_RANK), construído a partir
+   *  das tags COMPLETAS (antes do trim do pool). Sem ele, o filtro de tag só via as tags
+   *  do top-15 de cada obra — obras legítimas sumiam dos filtros famosos. ~157k entradas. */
+  tagIndex: Map<string, Set<string>>;
 }
 
 const g = globalThis as unknown as {
@@ -39,21 +43,48 @@ const POOL_TAG_CAP = 15; // top-15 por rank no pool — economia real de memóri
                           // (cards usam 2, IA usa 6, related usa overlap dos relevantes;
                           //  o DETALHE continua com TODAS as tags via getWorkById)
 
+// Rank mínimo para uma tag contar como "a obra é daquilo" — mesma régua para o índice
+// de filtro e os facets (o dropdown e o resultado ficam consistentes). 40 = menciona de
+// forma relevante na AniList; abaixo disso é menção de passagem (ex.: cena única de escola).
+export const TAG_INDEX_MIN_RANK = 40;
+const TAG_INDEX_MIN_COUNT = 40; // nome precisa ter >=40 obras pra valer índice (memória)
+
 async function buildCache(): Promise<Cache> {
   const agg = await db.work.aggregate({ _max: { createdAt: true } });
   const maxUpdatedAt = agg._max.createdAt?.getTime() ?? 0;
   const rows = await db.work.findMany({ select: POOL_SELECT });
-  const works = rows.map((r) => {
+  // 1ª passada: obras parseadas (tags completas) + contagem global de tags relevantes
+  const works: WorkData[] = [];
+  const tagCount = new Map<string, number>();
+  const fullTags: { name: string; rank: number }[][] = [];
+  for (const r of rows) {
     const w = parseWork(r);
+    fullTags.push(w.tags);
+    for (const t of w.tags) {
+      if (t.rank >= TAG_INDEX_MIN_RANK) tagCount.set(t.name, (tagCount.get(t.name) ?? 0) + 1);
+    }
     // 55k obras × 15-25 tags = ~150MB só de tags low-rank; o pool guarda as relevantes
     if (w.tags.length > POOL_TAG_CAP) {
       w.tags = [...w.tags].sort((a, b) => b.rank - a.rank).slice(0, POOL_TAG_CAP);
     }
     // sinônimos além de 6 nunca são encontrados na prática na busca — fora do pool
     if (w.synonyms && w.synonyms.length > 6) w.synonyms = w.synonyms.slice(0, 6);
-    return w;
-  });
-  return { works, builtAt: Date.now(), maxUpdatedAt };
+    works.push(w);
+  }
+  // 2ª passada: índice só com nomes que valem a pena (>=40 obras) — ~157k entradas ≈ 10MB
+  const indexNames = new Set([...tagCount.entries()].filter(([, n]) => n >= TAG_INDEX_MIN_COUNT).map(([name]) => name));
+  const tagIndex = new Map<string, Set<string>>([...indexNames].map((name) => [name, new Set()]));
+  for (let i = 0; i < works.length; i++) {
+    const id = works[i].id;
+    for (const t of fullTags[i]) {
+      if (t.rank >= TAG_INDEX_MIN_RANK) {
+        const set = tagIndex.get(t.name);
+        if (set) set.add(id);
+      }
+    }
+  }
+  if (!g.__ovCache) console.log(`[cache] tagIndex: ${tagIndex.size} nomes · ${[...tagIndex.values()].reduce((a, s) => a + s.size, 0)} entradas`);
+  return { works, builtAt: Date.now(), maxUpdatedAt, tagIndex };
 }
 
 /** Rebuild com single-flight: se já há um build em andamento, todo mundo espera o MESMO promise
@@ -112,6 +143,12 @@ export function peekStaleCache(): Cache | undefined {
   return g.__ovCache ?? g.__ovCacheStale;
 }
 
+/** Índice de tags do cache vivo (ou do stale) — rotas que filtram por tag usam para
+ *  resultados completos e consistentes independente do trim do pool. */
+export function peekTagIndex(): Map<string, Set<string>> | undefined {
+  return g.__ovCache?.tagIndex ?? g.__ovCacheStale?.tagIndex;
+}
+
 /** Projeção de card: remove os campos pesados que os cards nunca usam.
  *  synopsis ~70% do peso de um card; authors/extLinks/synonyms/banner fecham o resto;
  *  tags passa por trim (cards usam as 2 primeiras — mantemos 6 por segurança).
@@ -160,6 +197,10 @@ export function classify(m: { isAdult?: boolean; format?: string | null; tags?: 
     adultTags.push("Adulto");
     return { classification: "adult", adultTags: JSON.stringify([...new Set(adultTags)]), spicy: 2 };
   }
+  // gênero "Ecchi" (dado oficial da AniList) ⇒ sugestivo — regra alinhada com o
+  // fix-ecchi-genre.ts (sem ela, Kuzu no Honkai/We Never Learn etc. ficavam "safe"
+  // e sumiam do filtro Ecchi/Sensorial enquanto obras com cenas pontuais entravam)
+  if ((m.genres ?? []).includes("Ecchi")) return { classification: "suggestive", adultTags: "[]", spicy: 1 };
   const tagRanks = new Map((m.tags ?? []).map((t) => [t.name, t.rank]));
   const ecchi = tagRanks.get("Ecchi") ?? 0;
   const nudity = tagRanks.get("Nudity") ?? 0;
@@ -268,13 +309,21 @@ export interface WorkFilters {
   sort?: string;
   page?: number;
   perPage?: number;
+  tagIndex?: Map<string, Set<string>>; // índice do cache — filtro de tag completo
 }
 
 export function filterWorks(all: WorkData[], f: WorkFilters): { items: WorkData[]; total: number } {
   let list = [...all];
   if (f.type && f.type !== "all") list = list.filter((w) => w.type === f.type);
   if (f.genre && f.genre !== "all") list = list.filter((w) => w.genres.includes(f.genre!));
-  if (f.tag && f.tag !== "all") list = list.filter((w) => w.tags.some((t) => t.name === f.tag));
+  if (f.tag && f.tag !== "all") {
+    // via índice (tags completas, rank >= 40): resultado completo — o pool trima para o
+    // top-15 de tags por obra e antes escondia obras legítimas do filtro
+    const ids = f.tagIndex?.get(f.tag);
+    list = ids
+      ? list.filter((w) => ids.has(w.id))
+      : list.filter((w) => w.tags.some((t) => t.name === f.tag && t.rank >= TAG_INDEX_MIN_RANK));
+  }
   if (f.status && f.status !== "all") list = list.filter((w) => w.status === f.status);
   if (f.classification && f.classification !== "all") list = list.filter((w) => w.classification === f.classification);
   if (f.mag && f.mag !== "all") list = list.filter((w) => w.magazine?.name === f.mag);
@@ -336,7 +385,9 @@ export async function getFacets(adult = false) {
   for (const w of all) {
     for (const g of w.genres) genreCount.set(g, (genreCount.get(g) ?? 0) + 1);
     for (const t of w.tags) {
-      if (t.rank >= 60) tagCount.set(t.name, (tagCount.get(t.name) ?? 0) + 1);
+      // mesma régua do índice de filtro (rank >= 40): o count do dropdown passa a
+      // refletir o que o filtro devolve de verdade (antes era 60 e contava menos)
+      if (t.rank >= TAG_INDEX_MIN_RANK) tagCount.set(t.name, (tagCount.get(t.name) ?? 0) + 1);
     }
     if (w.magazine?.name) magCount.set(w.magazine.name, (magCount.get(w.magazine.name) ?? 0) + 1);
   }

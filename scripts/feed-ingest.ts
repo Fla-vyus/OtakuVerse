@@ -31,6 +31,13 @@ function stripTags(html: string): string {
     .trim();
 }
 
+/** Decodifica entidades XML de VALORES DE ATRIBUTO (url de thumbnail/link).
+ *  Sem isso, a URL gravada carrega &amp; → /api/img devolve 403 (imagem quebrada no feed).
+ *  &amp; por último: desenrola na ordem certa sem dupla-decodificação. */
+function decodeXmlAttr(s: string): string {
+  return s.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, "&");
+}
+
 function norm(s: string): string {
   return s
     .toLowerCase()
@@ -106,12 +113,12 @@ function parseAtom(xml: string): RedditEntry[] {
   const blocks = xml.split(/<entry>/).slice(1);
   for (const b of blocks) {
     const title = stripTags(b.match(/<title>([\s\S]*?)<\/title>/)?.[1] ?? "");
-    const link = b.match(/<link[^>]*href="([^"]+)"/)?.[1] ?? "";
+    const link = decodeXmlAttr(b.match(/<link[^>]*href="([^"]+)"/)?.[1] ?? "");
     const updated = Date.parse(b.match(/<updated>([\s\S]*?)<\/updated>/)?.[1] ?? "") || 0;
     const author = stripTags(b.match(/<name>([\s\S]*?)<\/name>/)?.[1] ?? "");
     const content = b.match(/<content[^>]*>([\s\S]*?)<\/content>/)?.[1] ?? "";
     const thumb = b.match(/<media:thumbnail[^>]*url="([^"]+)"/)?.[1] ?? null;
-    if (title && link) out.push({ title, link: link.split("?")[0], updated, author, snippet: stripTags(content).slice(0, 400), thumb });
+    if (title && link) out.push({ title, link: link.split("?")[0], updated, author, snippet: stripTags(content).slice(0, 400), thumb: thumb ? decodeXmlAttr(thumb) : null });
   }
   return out;
 }

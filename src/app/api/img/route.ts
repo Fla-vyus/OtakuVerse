@@ -14,8 +14,8 @@ const CACHE_DIR = "/home/z/my-project/.imgcache";
 const MAX_AGE = 7 * 86400; // 7 dias
 const MAX_BYTES = 8 * 1024 * 1024;
 
-// LRU memória (96 entradas)
-const g = globalThis as unknown as { __imgMem?: Map<string, Buffer> };
+// LRU memória (96 entradas) — guarda {buf, ct} para responder o tipo certo
+const g = globalThis as unknown as { __imgMem?: Map<string, { buf: Buffer; ct: string }> };
 function mem() {
   if (!g.__imgMem) g.__imgMem = new Map();
   return g.__imgMem;
@@ -31,6 +31,17 @@ function limited(ip: string): boolean {
   }
   b.n++;
   return b.n > 300; // 300 req/min/IP — folga para uma página cheia de capas
+}
+
+/** Sniff do Content-Type pelos magic bytes — o cache em disco não guarda o ct,
+ *  e servir WebP/PNG como image/jpeg com X-Content-Type-Options: nosniff
+ *  pode renderizar quebrado (thumbs do Reddit chegam como WebP). */
+function sniffCt(buf: Buffer): string {
+  if (buf.length > 3 && buf[0] === 0xff && buf[1] === 0xd8) return "image/jpeg";
+  if (buf.length > 8 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) return "image/png";
+  if (buf.length > 12 && buf.subarray(0, 4).toString("ascii") === "RIFF" && buf.subarray(8, 12).toString("ascii") === "WEBP") return "image/webp";
+  if (buf.length > 6 && buf.subarray(0, 3).toString("ascii") === "GIF") return "image/gif";
+  return "application/octet-stream";
 }
 
 function sha(s: string) {
@@ -85,7 +96,9 @@ export async function GET(req: NextRequest) {
   if (!u) return new NextResponse("Missing u", { status: 400 });
   if (!/^https?:\/\//i.test(u) || (f && !/^https?:\/\//i.test(f))) return new NextResponse("Bad URL", { status: 400 });
   // só permitimos imagens de fontes conhecidas (evita uso como proxy aberto)
-  const ALLOW = /(^|\.)anilist\.co$|(^|\.)kitsu\.(io|app|moe)$|(^|\.)wikimedia\.org$|(^|\.)wikipedia\.org$|(^|\.)mangaupdates\.com$|(^|\.)myanimelist\.net$|(^|\.)cdn\.[a-z0-9-]+\.(net|com|org)$/i;
+  // redd.it: thumbs do Feed Social (preview/external-preview/i.redd.it)
+  // imgur/ytimg/googleusercontent: imagens e thumbs usados por posts e páginas oficiais
+  const ALLOW = /(^|\.)anilist\.co$|(^|\.)kitsu\.(io|app|moe)$|(^|\.)wikimedia\.org$|(^|\.)wikipedia\.org$|(^|\.)mangaupdates\.com$|(^|\.)myanimelist\.net$|(^|\.)redd\.it$|(^|\.)imgur\.com$|(^|\.)ytimg\.com$|(^|\.)googleusercontent\.com$|(^|\.)cdn\.[a-z0-9-]+\.(net|com|org)$/i;
   try {
     const hu = new URL(u).hostname;
     if (!ALLOW.test(hu)) return new NextResponse("Source not allowed", { status: 403 });
@@ -100,7 +113,7 @@ export async function GET(req: NextRequest) {
   const key = sha(u);
   const m = mem();
   const hit = m.get(key);
-  if (hit) return img(hit, "image/jpeg", true);
+  if (hit) return img(hit.buf, hit.ct, true);
 
   await mkdir(CACHE_DIR, { recursive: true }).catch(() => {});
   const file = path.join(CACHE_DIR, key);
@@ -108,9 +121,10 @@ export async function GET(req: NextRequest) {
     const st = await stat(file);
     if (st.size > 0 && Date.now() - st.mtimeMs < MAX_AGE * 1000) {
       const buf = await readFile(file);
+      const entry = { buf, ct: sniffCt(buf) };
       if (m.size > 96) m.delete(m.keys().next().value as string);
-      m.set(key, buf);
-      return img(buf, "image/jpeg", true);
+      m.set(key, entry);
+      return img(buf, entry.ct, true);
     }
   } catch {}
 
@@ -124,7 +138,7 @@ export async function GET(req: NextRequest) {
 
   await writeFile(file, got.buf).catch(() => {});
   if (m.size > 96) m.delete(m.keys().next().value as string);
-  m.set(key, got.buf);
+  m.set(key, got);
   pruneDisk();
   return img(got.buf, got.ct, false);
 }

@@ -111,16 +111,19 @@ export function MagazineView() {
 
   // derive-loading: carrega o detalhe quando magazineKey muda
   useEffect(() => {
-    if (!magazineKey) { setDetail(null); setDetailLoading(false); return; }
+    // defer 1 tick: evita setState síncrono no corpo do effect (padrão do projeto)
     let alive = true;
-    setDetailLoading(true);
-    setDetail(null);
-    fetch(`/api/magazines?key=${encodeURIComponent(magazineKey)}&adult=${adultOk() ? 1 : 0}`)
-      .then((r) => r.json())
-      .then((d) => { if (alive && d.ok) setDetail(d); })
-      .catch(() => {})
-      .finally(() => { if (alive) setDetailLoading(false); });
-    return () => { alive = false; };
+    const t = setTimeout(() => {
+      if (!magazineKey) { setDetail(null); setDetailLoading(false); return; }
+      setDetailLoading(true);
+      setDetail(null);
+      fetch(`/api/magazines?key=${encodeURIComponent(magazineKey)}&adult=${adultOk() ? 1 : 0}`)
+        .then((r) => r.json())
+        .then((d) => { if (alive && d.ok) setDetail(d); })
+        .catch(() => {})
+        .finally(() => { if (alive) setDetailLoading(false); });
+    }, 0);
+    return () => { alive = false; clearTimeout(t); };
   }, [magazineKey, adultOk]);
 
   const grouped = useMemo(() => {

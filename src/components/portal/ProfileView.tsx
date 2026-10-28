@@ -76,20 +76,24 @@ export function ProfileView() {
 
   useEffect(() => {
     if (!user) return;
-    setDisplayName(user.displayName ?? user.username);
-    setBio(user.bio ?? "");
-    setAvatarColor(user.avatarColor ?? "#2563eb");
-    setAdultMode(user.adultMode);
-    fetch("/api/profile")
-      .then((r) => r.json())
-      .then((d) => {
-        if (d.ok) {
-          setSessions(d.sessions ?? []);
-          if (d.user.adultMode) setAdultRevealed(true);
-        }
-      })
-      .catch(() => {})
-      .finally(() => setLoaded(true));
+    // defer 1 tick: evita setState síncrono no corpo do effect (padrão do projeto)
+    const t = setTimeout(() => {
+      setDisplayName(user.displayName ?? user.username);
+      setBio(user.bio ?? "");
+      setAvatarColor(user.avatarColor ?? "#2563eb");
+      setAdultMode(user.adultMode);
+      fetch("/api/profile")
+        .then((r) => r.json())
+        .then((d) => {
+          if (d.ok) {
+            setSessions(d.sessions ?? []);
+            if (d.user.adultMode) setAdultRevealed(true);
+          }
+        })
+        .catch(() => {})
+        .finally(() => setLoaded(true));
+    }, 0);
+    return () => clearTimeout(t);
   }, [user?.id]);
 
   if (!authChecked) {

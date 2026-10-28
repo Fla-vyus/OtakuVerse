@@ -95,11 +95,13 @@ function Carousel({
 
   React.useEffect(() => {
     if (!api) return
-    onSelect(api)
+    // defer 1 tick: evita setState síncrono no corpo do effect (padrão do projeto)
+    const t = setTimeout(() => onSelect(api), 0)
     api.on("reInit", onSelect)
     api.on("select", onSelect)
 
     return () => {
+      clearTimeout(t)
       api?.off("select", onSelect)
     }
   }, [api, onSelect])

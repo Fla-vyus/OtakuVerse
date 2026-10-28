@@ -1,20 +1,49 @@
 #!/bin/bash
-# Keepalive do OtakuVerse — se o /api/health não responder 2x seguidas,
-# reinicia o servidor dev (npm run dev com heap cap). Roda via crontab a cada 5min.
-HEALTH=$(curl -s -o /dev/null -w "%{http_code}" --max-time 20 http://localhost:3000/api/health)
-if [ "$HEALTH" = "200" ]; then
-  exit 0
-fi
-# segunda chance (transiente?)
-sleep 15
-HEALTH2=$(curl -s -o /dev/null -w "%{http_code}" --max-time 20 http://localhost:3000/api/health)
-if [ "$HEALTH2" = "200" ]; then
-  exit 0
-fi
-echo "[$(date '+%F %T')] health=$HEALTH/$HEALTH2 — reiniciando servidor" >> /home/z/my-project/keepalive.log
-cd /home/z/my-project
-pkill -f "next dev" 2>/dev/null
-pkill -f "next-server" 2>/dev/null
-sleep 3
-nohup npm run dev >> /home/z/my-project/dev.log 2>&1 &
-echo "[$(date '+%F %T')] servidor reiniciado pelo keepalive" >> /home/z/my-project/keepalive.log
+# Keepalive do OtakuVerse — DAEMON de verdade.
+# Loop a cada 60s: 2 checagens de /api/health falhando seguidas → reinicia o servidor.
+# Prefere o servidor de PRODUÇÃO (standalone); se o build não existe, cai para o dev.
+#
+# Como rodar (método double-fork — sobrevive ao fim da chamada do shell, diferente de nohup):
+#   node -e "require('child_process').spawn('bash',['/home/z/my-project/scripts/keepalive.sh'],{detached:true,stdio:'ignore'}).unref()"
+#
+# Pausa temporária (durante rebuild/deploy): toque em .keepalive-pause e o daemon só observa.
+#   touch /home/z/my-project/.keepalive-pause   # pausa
+#   rm /home/z/my-project/.keepalive-pause      # retoma
+
+cd /home/z/my-project || exit 1
+LOG=/home/z/my-project/keepalive.log
+log() { echo "[$(date '+%F %T')] $*" >> "$LOG"; }
+
+log "daemon iniciado (pid $$)"
+consec=0
+while true; do
+  sleep 60
+  # pausa manual: não reinicia nada enquanto o arquivo existir
+  if [ -f /home/z/my-project/.keepalive-pause ]; then
+    consec=0
+    continue
+  fi
+  H=$(curl -s -o /dev/null -w "%{http_code}" --max-time 20 http://localhost:3000/api/health)
+  if [ "$H" = "200" ]; then
+    consec=0
+    continue
+  fi
+  consec=$((consec+1))
+  log "health=$H ($consec/2)"
+  [ "$consec" -lt 2 ] && continue
+  consec=0
+
+  log "reiniciando servidor…"
+  pkill -f "standalone/server.js" 2>/dev/null
+  pkill -f "next-server" 2>/dev/null
+  pkill -f "next dev" 2>/dev/null
+  sleep 3
+  if [ -f /home/z/my-project/.next/standalone/server.js ]; then
+    DATABASE_URL="file:/home/z/my-project/db/custom.db" PORT=3000 NODE_ENV=production \
+      setsid node /home/z/my-project/.next/standalone/server.js >> /home/z/my-project/server.log 2>&1 &
+    log "servidor de PRODUÇÃO reiniciado"
+  else
+    setsid npm run dev >> /home/z/my-project/dev.log 2>&1 &
+    log "servidor DEV reiniciado (build de produção inexistente)"
+  fi
+done

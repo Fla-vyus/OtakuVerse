@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAllWorks, filterWorks, getFacets, toCardWork } from "@/lib/works";
+import { getAllWorks, filterWorks, getFacets, toCardWork, peekTagIndex } from "@/lib/works";
 import { getSessionUser } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
@@ -21,6 +21,7 @@ export async function GET(req: NextRequest) {
       type: sp.get("type") ?? undefined,
       genre: sp.get("genre") ?? undefined,
       tag: sp.get("tag") ?? undefined,
+      tagIndex: peekTagIndex(),
       status: sp.get("status") ?? undefined,
       lang: sp.get("lang") ?? undefined,
       classification: adult ? undefined : sp.get("classification") ?? undefined,

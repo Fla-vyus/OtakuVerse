@@ -232,9 +232,13 @@ export function ForYouView() {
   );
 
   useEffect(() => {
-    setAiText(null);
-    setAiPicks(null);
-    fetchPage(page, surprise);
+    // defer 1 tick: evita setState síncrono no corpo do effect (padrão do projeto)
+    const t = setTimeout(() => {
+      setAiText(null);
+      setAiPicks(null);
+      fetchPage(page, surprise);
+    }, 0);
+    return () => clearTimeout(t);
   }, [fetchPage, page, surprise]);
 
   const askAoi = async () => {

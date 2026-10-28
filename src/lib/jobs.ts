@@ -1,6 +1,8 @@
 // Jobs de background do OtakuVerse — SÓ roda no runtime Node.js.
 // Importado dinamicamente pelo instrumentation.ts dentro do guard NEXT_RUNTIME,
 // então o bundler elimina este módulo do bundle Edge (nunca é parseado lá).
+import { existsSync } from "node:fs";
+import { resolve } from "node:path";
 //
 // Durabilidade em camadas (nada se perde):
 //   1. backup SQLite diário (VACUUM INTO, rotação de 10, fora do git) + integrity_check
@@ -12,14 +14,30 @@ const g = globalThis as unknown as {
   __ovLastBackupDay?: string;
   __ovLastSnapshotAt?: number;
   __ovRestoreChecked?: boolean;
+  __ovWatchdogHealedAt?: number;
 };
 
 const SNAP_INTERVAL = 6 * 60 * 60 * 1000; // 6h — um reset no pior caso perde <6h de dados
 
+// BLINDAGEM v3.6 — raiz do projeto REAL: o servidor roda com cwd = .next/standalone
+// (renomeado pelo Next), mas os scripts e o repositório git vivem 2 níveis acima.
+// Antes, TODOS os jobs de durabilidade (backup/snapshot/vault/capas/webnovels)
+// falhavam em produção com ERR_MODULE_NOT_FOUND — ninguém percebeu porque o catch
+// engolia o erro e o site continuava de pé (sem backup nenhum!).
+function projectRoot(): string {
+  const cwd = process.cwd();
+  if (existsSync(`${cwd}/scripts/db-backup.ts`)) return cwd;
+  const up = resolve(cwd, "..", "..");
+  if (existsSync(`${up}/scripts/db-backup.ts`)) return up;
+  return cwd;
+}
+
 async function runScript(script: string, timeout: number): Promise<string> {
   const { execFile } = await import("node:child_process");
   const { promisify } = await import("node:util");
-  const { stdout } = await promisify(execFile)("npx", ["tsx", script], { cwd: process.cwd(), timeout });
+  const root = projectRoot();
+  // tsx + node_modules do projeto (o standalone não tem nada disso)
+  const { stdout } = await promisify(execFile)("npx", ["tsx", script], { cwd: root, timeout });
   return stdout;
 }
 
@@ -29,7 +47,8 @@ async function gitCommitSnapshots() {
   try {
     const { execFile } = await import("node:child_process");
     const { promisify } = await import("node:util");
-    const run = (cmd: string, args: string[]) => promisify(execFile)(cmd, args, { cwd: process.cwd(), timeout: 30_000 });
+    const root = projectRoot(); // o repositório git está na raiz, NUNCA no standalone
+    const run = (cmd: string, args: string[]) => promisify(execFile)(cmd, args, { cwd: root, timeout: 30_000 });
     // garante identidade do git em ambientes limpos (não sobrescreve se já configurada)
     await run("git", ["config", "user.name"]).catch(async () => {
       await run("git", ["config", "user.name", "OtakuVerse Snapshot Bot"]).catch(() => {});
@@ -94,11 +113,12 @@ async function autoRestore() {
   g.__ovRestoreChecked = true;
   try {
     const fs = await import("node:fs");
-    const hasSnapshot = fs.existsSync(process.cwd() + "/data/catalog-snapshot.jsonl.gz");
+    const root = projectRoot();
+    const hasSnapshot = fs.existsSync(`${root}/data/catalog-snapshot.jsonl.gz`);
     if (!hasSnapshot) return;
     const { execFile } = await import("node:child_process");
     const { promisify } = await import("node:util");
-    const { stdout } = await promisify(execFile)("npx", ["tsx", "-e", `import {PrismaClient} from "@prisma/client"; const db = new PrismaClient(); db.work.count().then(async (n) => { console.log("COUNT=" + n); await db.$disconnect(); });`], { cwd: process.cwd(), timeout: 60_000 });
+    const { stdout } = await promisify(execFile)("npx", ["tsx", "-e", `import {PrismaClient} from "@prisma/client"; const db = new PrismaClient(); db.work.count().then(async (n) => { console.log("COUNT=" + n); await db.$disconnect(); });`], { cwd: root, timeout: 60_000 });
     const count = Number(/COUNT=(\d+)/.exec(stdout)?.[1] ?? 0);
     // Marca d'água: o manifest guarda a última contagem boa conhecida do snapshot.
     // O limiar fixo de 10k deixava passar perda PARCIAL (ex.: 37.574 → 24.807 passava
@@ -106,13 +126,13 @@ async function autoRestore() {
     // contra o último snapshot bom dispara restore aditivo.
     let expected = 0;
     try {
-      const manifest = JSON.parse(fs.readFileSync(process.cwd() + "/data/manifest.json", "utf8"));
+      const manifest = JSON.parse(fs.readFileSync(`${root}/data/manifest.json`, "utf8"));
       expected = Number(manifest.catalog?.count ?? 0);
     } catch {}
     const floor = expected > 10_000 ? Math.floor(expected * 0.9) : 10_000;
     if (count < floor) {
       console.log(`[restore] banco com ${count} obras (esperado ≥ ${floor}) — restaurando do snapshot git-safe…`);
-      const { stdout: out2 } = await promisify(execFile)("npx", ["tsx", "scripts/catalog-restore.ts", "--force"], { cwd: process.cwd(), timeout: 600_000 });
+      const { stdout: out2 } = await promisify(execFile)("npx", ["tsx", "scripts/catalog-restore.ts", "--force"], { cwd: root, timeout: 600_000 });
       console.log("[restore]", out2.split("\n").slice(-3).join(" | "));
     }
   } catch (e) {
@@ -135,14 +155,19 @@ async function doVault(reason = "6h") {
 
 /** Watchdog: auto-diagnóstico a cada 5 min — o site NUNCA fica quebrado em
  *  silêncio. Checa: banco responde, pool de obras vivo, memória sob controle,
- *  imagem-cache não estourou. Problemas aparecem no log com [watchdog]. */
+ *  imagem-cache não estourou. Problemas aparecem no log com [watchdog].
+ *  v3.6 — CURA ATIVA: pool vazio com banco saudável deixa de ser só um log —
+ *  o watchdog dispara o rebuild na hora (foi exatamente o incidente de hoje:
+ *  tick do cron invalidou o pool às 17:55 e o site passou ~1h "sem catálogo"
+ *  porque ninguém acessou nada até alguém reaquecer à mão). */
 async function watchdog() {
   try {
     const t0 = Date.now();
     const prisma = (await import("@/lib/db")).db;
     await prisma.$queryRawUnsafe("SELECT 1");
     const dbMs = Date.now() - t0;
-    const works = (await import("@/lib/works")).peekStaleCache()?.works.length ?? 0;
+    const worksMod = await import("@/lib/works");
+    const works = worksMod.peekStaleCache()?.works.length ?? 0;
     const mem = process.memoryUsage();
     const rssMB = Math.round(mem.rss / 1048576);
     const issues: string[] = [];
@@ -152,6 +177,17 @@ async function watchdog() {
     else if (rssMB > 1100) issues.push(`memória alta (${rssMB}MB)`);
     if (issues.length) console.warn(`[watchdog] atenção: ${issues.join(" · ")}`);
     else console.log(`[watchdog] ok — banco ${dbMs}ms, pool ${works} obras, rss ${rssMB}MB`);
+    // cura ativa: banco responde rápido + pool vazio → reconstrói agora
+    if (works === 0 && dbMs < 2000) {
+      const now = Date.now();
+      if (now - (g.__ovWatchdogHealedAt ?? 0) > 5 * 60_000) {
+        g.__ovWatchdogHealedAt = now;
+        console.warn("[watchdog] CURA ATIVA: disparando rebuild do pool…");
+        worksMod.forceRebuild()
+          .then((c) => console.log(`[watchdog] pool restaurado: ${c.works.length} obras`))
+          .catch((e) => console.error("[watchdog] rebuild de cura falhou:", (e as Error).message));
+      }
+    }
   } catch (e) {
     console.error("[watchdog] BANCO NÃO RESPONDE:", (e as Error).message);
   }

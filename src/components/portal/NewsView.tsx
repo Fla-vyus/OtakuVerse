@@ -6,7 +6,7 @@ import { usePortal } from "./store";
 
 interface NewsItem {
   id: string; kind: string; title: string; summary: string; body?: string;
-  image: string | null; imageWide?: boolean; date: string; workId: string | null; badge: string; source?: string;
+  image: string | null; imageFallback?: string; imageWide?: boolean; date: string; workId: string | null; badge: string; source?: string;
 }
 
 const KIND_ICON: Record<string, React.ReactNode> = {
@@ -28,11 +28,19 @@ function byline(n: NewsItem): string {
 /** Imagem da notícia SEM distorção nem pixel estourado:
  *  - banner (paisagem, 1050px) → object-cover preenche o recorte;
  *  - capa retrato (~460px, extraLarge) → contain em cima de um fundo desfocado
- *    da própria capa (padrão editorial) — nunca estica nem zooma 3x. */
+ *    da própria capa (padrão editorial) — nunca estica nem zooma 3x.
+ *  v3.6 — NUNCA MAIS IMAGEM QUEBRADA: o servidor já validou a URL (HEAD 200) e
+ *  manda uma 2ª opção comprovada (imageFallback). Aqui: proxy /api/img recebe as
+ *  duas (?u= + ?f=) e o onError esgota a cadeia → gradiente editorial. */
 function NewsImage({ item, eager }: { item: NewsItem; eager?: boolean }) {
-  if (!item.image) return <div className="bg-hero-grad h-full w-full" />;
-  const src = `/api/img?u=${encodeURIComponent(item.image)}`;
+  const [dead, setDead] = useState(false);
+  if (!item.image || dead) return <div className="bg-hero-grad h-full w-full" />;
+  const src = `/api/img?u=${encodeURIComponent(item.image)}${item.imageFallback ? `&f=${encodeURIComponent(item.imageFallback)}` : ""}`;
   const wide = item.imageWide === true;
+  const onErr = () => {
+    // o proxy tenta u → f sozinho; se MESMO ASSIM o <img> falhar, esgota pro gradiente
+    setDead(true);
+  };
   return (
     <>
       {!wide && (
@@ -42,6 +50,7 @@ function NewsImage({ item, eager }: { item: NewsItem; eager?: boolean }) {
           aria-hidden
           loading={eager ? "eager" : "lazy"}
           referrerPolicy="no-referrer"
+          onError={onErr}
           className="absolute inset-0 h-full w-full scale-110 object-cover opacity-40 blur-xl"
         />
       )}
@@ -50,6 +59,7 @@ function NewsImage({ item, eager }: { item: NewsItem; eager?: boolean }) {
         alt={item.title}
         loading={eager ? "eager" : "lazy"}
         referrerPolicy="no-referrer"
+        onError={onErr}
         className={`relative h-full w-full transition duration-500 group-hover:scale-[1.02] ${wide ? "object-cover" : "object-contain"}`}
       />
     </>

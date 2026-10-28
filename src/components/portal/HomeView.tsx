@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Flame, Star, Sparkles, Trophy, Rocket, CalendarDays, Newspaper, Gauge, Layers, BookOpen, Clock, TrendingUp, BookMarked, Check, Globe } from "lucide-react";
 import { usePortal, HYPE_MODES } from "./store";
 import { CardRow, WorkCard, CardSkeleton } from "./WorkCard";
+import AdSlot from "./AdSlot";
 import { fetchJSON } from "@/lib/fetchClient";
 import type { WorkData } from "@/lib/types";
 
@@ -610,6 +611,9 @@ export function HomeView() {
               <CardRow items={core.newMangas} />
             </section>
           )}
+
+          {/* anúncio SÓ renderiza em contexto safe com AdSense configurado (ver AdSlot) */}
+          <AdSlot slotId="home-mid" />
 
           {core.chapterReleases?.length > 0 && (
             <section className="cv-auto">

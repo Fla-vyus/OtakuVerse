@@ -10,19 +10,25 @@ export default function proxy(req: NextRequest) {
   // Content-Security-Policy: mantém o site fechado (só self + inline necessário
   // para hidratação/estilos do Next). Imagens externas passam pelo proxy /api/img.
   // Em dev, ws: entra no connect-src para o HMR do Turbopack (websocket) funcionar.
+  // v3.6 — allowlist para MONETIZAÇÃO/MÉTRICA (só vira tráfego real quando os
+  // scripts correspondentes são carregados — sem env configurada, zero request):
+  //   · GA4: googletagmanager (script) + google-analytics (beacons/connect)
+  //   · Cloudflare Web Analytics: static.cloudflareinsights.com
+  //   · AdSense (safe-only): googlesyndication + doubleclick (frames de criativo)
   const dev = process.env.NODE_ENV !== "production";
   const csp = [
     "default-src 'self'",
-    "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://static.cloudflareinsights.com https://pagead2.googlesyndication.com https://*.googlesyndication.com",
     "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data: blob:",
+    "img-src 'self' data: blob: https://www.google-analytics.com https://*.googlesyndication.com https://googleads.g.doubleclick.net https://www.googleadservices.com",
     "font-src 'self' data:",
-    `connect-src 'self'${dev ? " ws: wss:" : ""}`,
+    `connect-src 'self' https://*.google-analytics.com https://region1.google-analytics.com https://cloudflareinsights.com https://pagead2.googlesyndication.com https://googleads.g.doubleclick.net${dev ? " ws: wss:" : ""}`,
     "worker-src 'self'", // PWA: registro do service worker (/sw.js)
     "media-src 'self'",
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",
+    "frame-src https://googleads.g.doubleclick.net https://*.googlesyndication.com", // iframes de criativo AdSense
     "frame-ancestors 'none'",
   ].join("; ");
   h.set("Content-Security-Policy", csp);

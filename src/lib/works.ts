@@ -17,6 +17,7 @@ const g = globalThis as unknown as {
   __ovCache?: Cache;
   __ovCacheBuilding?: Promise<Cache>; // single-flight: N requisições concorrentes = 1 rebuild
   __ovCacheStale?: Cache; // último cache válido — emergência quando o banco falha
+  __ovEmptyRetryAt?: number; // anti-loop: último retry pós-rebuild-vazio (máx. 1 a cada 5 min)
 };
 const TTL = 900_000; // 15 min — invalidação explícita por seeds/cron + SWR cobrem o meio-termo
 
@@ -115,22 +116,54 @@ function rebuildCache(): Promise<Cache> {
 export async function getAllWorks(adult = false): Promise<WorkData[]> {
   let cache = g.__ovCache;
   if (!cache) {
-    cache = await rebuildCache();
+    try {
+      cache = await rebuildCache();
+    } catch (e) {
+      // Banco ocupado/instável NÃO pode virar 500 se temos a cópia de emergência.
+      // (v3.6: antes disso o site exibia "sem conexão com o catálogo" até alguém reaquecer)
+      if (g.__ovCacheStale && g.__ovCacheStale.works.length > 0) {
+        console.warn("[pool] rebuild falhou — servindo cópia de emergência:", (e as Error).message);
+        cache = g.__ovCacheStale;
+      } else {
+        throw e;
+      }
+    }
   } else if (Date.now() - cache.builtAt > TTL) {
     // stale-while-revalidate: responde já com o stale; revalida em background
     rebuildCache().catch(() => {});
+  }
+  // Blindagem v3.6: um rebuild que voltou VAZIO nunca substitui um pool bom.
+  // (janela de manutenção/seed no banco fazia findMany retornar 0 linhas e o site
+  //  ficava "sem catálogo" com cache VÁLIDO — o health não sabia mentir menos)
+  if (cache.works.length === 0 && g.__ovCacheStale && g.__ovCacheStale.works.length > 0) {
+    console.warn("[pool] rebuild veio vazio — mantendo cópia de emergência até o próximo ciclo");
+    cache = g.__ovCacheStale;
+    const now = Date.now();
+    if (now - (g.__ovEmptyRetryAt ?? 0) > 5 * 60_000) {
+      g.__ovEmptyRetryAt = now;
+      rebuildCache().catch(() => {}); // single-flight: tentativa nova sem stampede
+    }
   }
   if (adult) return cache.works;
   return cache.works.filter((w) => w.classification !== "adult" && w.type !== "drama");
 }
 
 /** Invalida o cache após seeds/cron. Com stale-while-revalidate, a próxima leitura
- *  responde stale imediatamente e revalida em background — sem janela vazia. */
+ *  responde stale imediatamente e revalida em background — sem janela vazia.
+ *  BLINDAGEM v3.6: a invalidação SÓ substitui a cópia de emergência quando a cache
+ *  viva tem obras de verdade. Antes, 2 invalidações sem rebuild no meio (tick do
+ *  cron + rota hype) APAGAVAM o stale — e o site acordava sem catálogo por horas. */
 export function invalidateWorksCache() {
   const stale = g.__ovCache;
+  if (stale && stale.works.length > 0) g.__ovCacheStale = stale;
   g.__ovCache = undefined;
-  g.__ovCacheStale = stale;
   relatedLRU.clear(); // related foi computado sobre o pool antigo — não vale mais
+}
+
+/** Reconstrução explícita do pool — usada pelo watchdog quando detecta pool vazio
+ *  com banco saudável (cura ativa em vez de só logar o problema). */
+export function forceRebuild(): Promise<Cache> {
+  return rebuildCache();
 }
 
 /** Versão do pool (builtAt) — rotas que cacheiam derivados invalidam junto com o pool. */
@@ -138,9 +171,14 @@ export function poolVersion(): number {
   return g.__ovCache?.builtAt ?? 0;
 }
 
-/** Pool de emergência: último cache válido conhecido (usado por rotas quando o banco falha). */
+/** Pool de emergência: último cache válido conhecido (usado por rotas quando o banco falha).
+ *  v3.6: prefere SEMPRE um pool com obras — cache vivo vazio não engana o health. */
 export function peekStaleCache(): Cache | undefined {
-  return g.__ovCache ?? g.__ovCacheStale;
+  const live = g.__ovCache;
+  const stale = g.__ovCacheStale;
+  if (live && live.works.length > 0) return live;
+  if (stale && stale.works.length > 0) return stale;
+  return live ?? stale;
 }
 
 /** Índice de tags do cache vivo (ou do stale) — rotas que filtram por tag usam para

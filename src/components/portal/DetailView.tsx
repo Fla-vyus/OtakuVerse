@@ -14,6 +14,8 @@ import {
 import { usePortal, LIB_STATUS_LABEL, prefetchWork, type LibraryEntry } from "./store";
 import { WorkCard } from "./WorkCard";
 import { AoiMarkdown } from "./AoiMarkdown";
+import BuyPanel from "./BuyPanel";
+import AdSlot from "./AdSlot";
 import { proxyImg } from "@/lib/imgurl";
 import type { RelatedBundle } from "@/lib/works";
 
@@ -479,6 +481,10 @@ export function DetailView({ workId }: { workId: string }) {
                 </a>
               </div>
             </div>
+            {/* Afiliados por país — some sozinho em obras adultas (linha vermelha interna) */}
+            <BuyPanel work={w} />
+            {/* Anúncio — SÓ obras safe (o AdSlot bloqueia suggestive/adult/+18) */}
+            <AdSlot slotId="detail-sidebar" workClass={w.classification} />
           </div>
         </TabsContent>
 

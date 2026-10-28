@@ -12,6 +12,7 @@ export interface NewsItem {
   summary: string;
   body: string; // texto editorial completo (parágrafos separados por \n\n)
   image: string | null;
+  imageFallback?: string; // v3.6: 2ª opção comprovada — usada se a principal falhar no proxy/cliente
   imageWide?: boolean; // true = banner paisagem (recobre bem) · false/ausente = capa retrato (UI usa contain + blur)
   date: string;
   workId: string | null; // null quando a fonte externa não casou com o catálogo
@@ -45,6 +46,34 @@ function pick<T>(arr: T[], i: number): T {
  *  no MESMO nome de arquivo: basta trocar o segmento de tamanho. Banner já é 1050px. */
 function hiResCover(u: string): string {
   return u.replace("/cover/large/", "/cover/extraLarge/");
+}
+
+// ---------- BLINDAGEM v3.6 — imagens de notícia NUNCA mais quebradas ----------
+// Incidente 28/10: hiResCover gerava URLs extraLarge que o CDN da AniList NÃO tem
+// para certas obras (ex.: bx188034, bx217624 → 404) e o card exibia imagem quebrada.
+// Agora TODA imagem de notícia é validada com HEAD antes de entrar no feed, com
+// cadeia de fallback (banner → capa hi-res → capa original) — e o que sobra vai
+// nulo e o card usa o gradiente editorial (nunca imagem podre).
+async function imageUrlOk(u: string): Promise<boolean> {
+  try {
+    const r = await fetch(u, { method: "HEAD", signal: AbortSignal.timeout(4000), cache: "no-store" });
+    return r.ok;
+  } catch {
+    return false;
+  }
+}
+
+/** Escolhe a 1ª imagem que RESPONDE 200. Sem custo perceptível: roda em paralelo
+ *  dentro do buildNews (cache 15 min + stale-while-revalidate = usuário não espera). */
+async function pickImage(...candidates: (string | null | undefined)[]): Promise<{ image: string | null; imageFallback?: string }> {
+  const list = [...new Set(candidates.filter((c): c is string => !!c))];
+  if (!list.length) return { image: null };
+  const results = await Promise.all(list.map(async (u) => ({ u, ok: await imageUrlOk(u) })));
+  const good = results.filter((r) => r.ok).map((r) => r.u);
+  if (good.length) return { image: good[0], imageFallback: good[1] };
+  // nenhuma respondeu (CDN instável): devolve a primeira na fé — o proxy /api/img e o
+  // onError do cliente ainda têm a segunda chance antes do gradiente
+  return { image: list[0], imageFallback: list[1] };
 }
 
 /** Procura a obra no pool por id (e, se vier de fonte externa, por título normalizado). */
@@ -133,14 +162,16 @@ async function liveHypeItems(pool: WorkData[]): Promise<NewsItem[]> {
           : `Um dos títulos mais comentados do momento (${fmtNum(m.popularity ?? 0)} leitores acompanhando na fonte).`;
       const dbWork = findInPool(pool, String(m.id));
       const ctx = dbWork ? " " + contextParagraph(dbWork) : m.averageScore ? ` Nota média de ${m.averageScore}% na agregação.` : "";
+      const img = await pickImage(m.bannerImage, m.coverImage?.extraLarge ? hiResCover(m.coverImage.extraLarge) : null, m.coverImage?.extraLarge?.replace("/extraLarge/", "/large/") ?? null);
       items.push({
         id: `hype-${m.id}`,
         kind: "hype",
         title: `${title} dispara no hype`,
         summary,
         body: `${lead}. ${summary}${ctx}${m.nextAiringEpisode ? `\n\nO próximo episódio (${m.nextAiringEpisode.episode}) já tem data marcada — vale deixar na lista para não perder o embalo.` : ""}`,
-        image: m.bannerImage ?? (m.coverImage?.extraLarge ? hiResCover(m.coverImage.extraLarge) : null),
-        imageWide: !!m.bannerImage,
+        image: img.image,
+        imageFallback: img.imageFallback,
+        imageWide: img.image !== null && !!m.bannerImage && img.image === m.bannerImage,
         date: new Date().toISOString(),
         workId: String(m.id),
         badge: "Hype agora",
@@ -157,14 +188,16 @@ async function liveHypeItems(pool: WorkData[]): Promise<NewsItem[]> {
         const k = merged[i];
         const hit = findInPool(pool, undefined, k.titles);
         const title = hit?.title ?? k.titles[0] ?? "Obra em alta";
+        const img = await pickImage(hit?.banner ?? null, hit ? hiResCover(hit.cover) : null, k.image);
         items.push({
           id: `kitsu-${k.id}`,
           kind: "hype",
           title: `${title} figura entre os mais acompanhados`,
           summary: `Está entre os títulos com mais seguidores cadastrados na fonte alternativa (${fmtNum(k.userCount)} usuários).`,
           body: `${pick(HYPE_LEADS, i)(title)} — pelos dados da fonte alternativa, acumula ${fmtNum(k.userCount)} seguidores cadastrados.${hit ? " " + contextParagraph(hit) : k.desc ? `\n\n${k.desc}` : ""}`,
-          image: hit ? (hit.banner ?? hiResCover(hit.cover)) : k.image,
-          imageWide: !!hit?.banner,
+          image: img.image,
+          imageFallback: img.imageFallback,
+          imageWide: img.image !== null && !!hit?.banner && img.image === hit.banner,
           date: new Date().toISOString(),
           workId: hit?.id ?? null,
           badge: "Em alta",
@@ -203,12 +236,14 @@ async function buildNewsInner(pool: WorkData[]): Promise<NewsItem[]> {
     items.push(...(await liveHypeItems(pool)));
 
     // 2) Estreias recentes no catálogo (dados reais de data) — separa lançadas de previstas
+    // v3.6: pickImage em paralelo (validação HEAD) para não serializar o build do feed
     const debuts = [...pool]
       .filter((w) => w.startDate && w.startDate >= new Date(now - 60 * 86400000).toISOString().slice(0, 10) && w.cover && (w.popularity ?? 0) >= 5000)
       .sort((a, b) => (b.popularity ?? 0) - (a.popularity ?? 0))
       .slice(0, 4);
-    for (const w of debuts) {
+    await Promise.all(debuts.map(async (w) => {
       const isFuture = (w.startDate ?? "") > new Date(now).toISOString().slice(0, 10);
+      const img = await pickImage(w.banner, hiResCover(w.cover), w.cover);
       items.push({
         id: `estreia-${w.id}`,
         kind: "estreia",
@@ -219,57 +254,62 @@ async function buildNewsInner(pool: WorkData[]): Promise<NewsItem[]> {
         body: isFuture
           ? `A contagem regressiva começou: ${w.title} tem estreia confirmada para ${fmtDate(w.startDate)}${w.episodes ? ` com previsão de ${w.episodes} episódios` : ""}.\n\n${contextParagraph(w)} Quem quiser entrar cedo já pode salvar na biblioteca e acompanhar o lançamento capítulo a capítulo.`
           : `${w.title} está oficialmente disponível desde ${fmtDate(w.startDate)}${w.episodes ? ` — são ${w.episodes} episódios previstos` : ""}.\n\n${contextParagraph(w)} Com esse currículo inicial, a tendência é o boca a boca crescer nas próximas semanas.`,
-        image: w.banner ?? hiResCover(w.cover),
-        imageWide: !!w.banner,
+        image: img.image,
+        imageFallback: img.imageFallback,
+        imageWide: img.image !== null && !!w.banner && img.image === w.banner,
         date: isFuture ? new Date(now).toISOString() : (w.startDate!.length === 10 ? w.startDate + "T12:00:00Z" : w.startDate!),
         workId: w.id,
         badge: isFuture ? "Chega em" : "Estreia",
         source: "Catálogo",
       });
-    }
+    }));
 
     // 3) Retornos confirmados (animes com próximo episódio datado — dado real)
     const returning = [...pool]
       .filter((w) => w.nextEpisodeAt && new Date(w.nextEpisodeAt).getTime() > now && w.nextEpisodeAt < new Date(now + 10 * 86400000).toISOString())
       .sort((a, b) => (a.nextEpisodeAt ?? "").localeCompare(b.nextEpisodeAt ?? ""))
       .slice(0, 4);
-    for (const w of returning) {
+    await Promise.all(returning.map(async (w) => {
       const d = new Date(w.nextEpisodeAt!);
+      const img = await pickImage(w.banner, hiResCover(w.cover), w.cover);
       items.push({
         id: `retorno-${w.id}`,
         kind: "retorno",
         title: `${w.title} volta com o ep ${w.nextEpisodeNum}`,
         summary: `Próximo episódio confirmado: ${d.toLocaleString("pt-BR", { weekday: "long", hour: "2-digit", minute: "2-digit" })} (${d.toLocaleDateString("pt-BR")}).`,
         body: `A pausa acabou: ${w.title} retorna com o episódio ${w.nextEpisodeNum ?? "seguinte"} confirmado para ${d.toLocaleString("pt-BR", { weekday: "long", hour: "2-digit", minute: "2-digit" })} (${d.toLocaleDateString("pt-BR")}) — horário já convertido para o seu fuso.\n\n${contextParagraph(w)}`,
-        image: w.banner ?? hiResCover(w.cover),
-        imageWide: !!w.banner,
+        image: img.image,
+        imageFallback: img.imageFallback,
+        imageWide: img.image !== null && !!w.banner && img.image === w.banner,
         date: w.nextEpisodeAt!,
         workId: w.id,
         badge: "Retorna",
         source: "Catálogo",
       });
-    }
+    }));
 
     // 4) Marcos: obras mais favoritadas dos últimos anos (recordes reais)
     const milestones = [...pool]
       .filter((w) => (w.favourites ?? 0) >= 40000)
       .sort((a, b) => (b.favourites ?? 0) - (a.favourites ?? 0))
       .slice(0, 3);
-    for (const w of milestones) {
+    await Promise.all(milestones.map(async (w) => {
+      const img = await pickImage(w.banner, hiResCover(w.cover), w.cover);
       items.push({
         id: `marco-${w.id}`,
         kind: "marco",
         title: `${w.title}: ${fmtNum(w.favourites)} favoritos`,
         summary: `Consolidado entre as obras mais amadas da história — nota ${w.avgScore ?? "?"}% e ${fmtNum(w.popularity)} usuários acompanhando.`,
         body: `Alguns números falam por si: ${w.title} já acumula ${fmtNum(w.favourites)} favoritos e ${fmtNum(w.popularity)} usuários acompanhando, com nota média de ${w.avgScore ?? "?"}%.\n\n${contextParagraph(w)} É o tipo de obra que atravessa gerações de leitores — se você ainda não conferiu, está na hora.`,
-        image: w.banner ?? hiResCover(w.cover),
-        imageWide: !!w.banner,
+        image: img.image,
+        imageFallback: img.imageFallback,
+        imageWide: img.image !== null && !!w.banner && img.image === w.banner,
         date: w.startDate ? w.startDate + "T12:00:00Z" : new Date().toISOString(),
         workId: w.id,
         badge: "Marco",
         source: "Catálogo",
       });
-    }
+    }));
 
     items.sort((a, b) => b.date.localeCompare(a.date));
     g.__newsCache = { at: Date.now(), items: items.slice(0, 16) };

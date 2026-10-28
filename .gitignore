@@ -20,8 +20,24 @@ db/imgcache/
 *.log
 db/backup-corrupt/
 db/*.db*
+db/corrupted-*/
 public/covers/
 .backfill-state.json
 .backfill.log
 tool-results/
 db/backups/
+
+# --- GitHub prep (v3.7): não versionar infra local nem artefatos de auditoria ---
+skills/
+download/
+mini-services/
+examples/
+scripts/*.png
+scripts/*.jpg
+scripts/*.pdf
+scripts/*.log
+scripts/seed-progress.json
+scripts/seed-expand-progress.json
+.keepalive-pause
+agent-ctx/
+.npm/

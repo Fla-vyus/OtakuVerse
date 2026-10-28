@@ -10,7 +10,12 @@ import path from "node:path";
 
 export const dynamic = "force-dynamic";
 
-const CACHE_DIR = "/home/z/my-project/.imgcache";
+// Portátil v3.7.4: nada de caminho absoluto — env IMG_CACHE_DIR > OTAKUVERSE_ROOT
+// (padrão v3.7.2 dos jobs) > cwd. Em produção os scripts exportam OTAKUVERSE_ROOT,
+// então o comportamento é idêntico ao anterior; em outros ambientes cai no cwd.
+const CACHE_DIR =
+  process.env.IMG_CACHE_DIR ||
+  path.join(process.env.OTAKUVERSE_ROOT || process.cwd(), ".imgcache");
 const MAX_AGE = 7 * 86400; // 7 dias
 const MAX_BYTES = 8 * 1024 * 1024;
 

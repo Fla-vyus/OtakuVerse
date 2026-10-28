@@ -47,3 +47,6 @@ data/accounts-snapshot.json.gz
 data/vault/
 *.db-wal
 *.db-shm
+
+# --- CI: re-adicionar quando o token tiver escopo workflow (git add -f .github/workflows/ci.yml) ---
+.github/workflows/

@@ -2,7 +2,7 @@
 
 import React, { memo, useState } from "react";
 import { Star, BookOpen, Tv, Heart, Clapperboard, Bookmark, Check } from "lucide-react";
-import { usePortal } from "./store";
+import { usePortal, prefetchWork } from "./store";
 import { proxyImg } from "@/lib/imgurl";
 import { TYPE_LABEL, CLASSIFICATION_LABEL, type WorkData } from "@/lib/types";
 
@@ -66,6 +66,10 @@ export const WorkCard = memo(function WorkCard({ work, rank, badge, caption }: {
       role="button"
       tabIndex={0}
       onClick={() => openWork(work.id)}
+      // prefetch: hover/tecla/toque já baixa o detalhe — o clique abre sem spinner
+      onPointerEnter={() => prefetchWork(work.id)}
+      onFocus={() => prefetchWork(work.id)}
+      onTouchStart={() => prefetchWork(work.id)}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") openWork(work.id);
       }}
@@ -200,7 +204,7 @@ export function CardRow({ items, ranks }: { items: WorkData[]; ranks?: boolean }
 /** Grid responsivo de cards */
 export function CardGrid({ items }: { items: WorkData[] }) {
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+    <div className="grid grid-cols-3 gap-2.5 sm:gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
       {items.map((w) => (
         <WorkCard key={w.id} work={w} />
       ))}
@@ -268,6 +272,8 @@ export function ForYouCard({ work, match, reasons, highlight }: { work: WorkData
       role="button"
       tabIndex={0}
       onClick={() => openWork(work.id)}
+      onPointerEnter={() => prefetchWork(work.id)}
+      onTouchStart={() => prefetchWork(work.id)}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") openWork(work.id);
       }}

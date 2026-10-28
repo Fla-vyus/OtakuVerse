@@ -284,7 +284,7 @@ export function ExploreView() {
       </div>
 
       {loading ? (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+        <div className="grid grid-cols-3 gap-2.5 sm:gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
           {Array.from({ length: Math.min(perPage, 60) }).map((_, i) => (
             <div key={i} className="space-y-2">
               <div className="skel aspect-[2/3] w-full rounded-2xl" />

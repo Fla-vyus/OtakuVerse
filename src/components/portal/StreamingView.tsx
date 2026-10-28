@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Tv, Loader2, CalendarDays, Radio } from "lucide-react";
+import { Tv, Loader2, CalendarDays, Radio, WifiOff, RotateCcw } from "lucide-react";
 import { TYPE_LABEL, fmtNum, type WorkData } from "@/lib/types";
+import { fetchJSON } from "@/lib/fetchClient";
 import { usePortal } from "./store";
 import { ScoreBadge, CoverThumb } from "./WorkCard";
 
@@ -34,18 +35,24 @@ export function StreamingView() {
   const openWork = usePortal((s) => s.openWork);
   const [data, setData] = useState<{ groups: PlatformGroup[]; label: string; total: number } | null>(null);
   const [platform, setPlatform] = useState<string>("all");
+  const [failed, setFailed] = useState(false);
 
-  const loading = !data;
+  const loading = !data && !failed;
+
+  const load = () => {
+    setFailed(false);
+    fetchJSON<{ ok: boolean; groups?: PlatformGroup[]; label?: string; total?: number }>("/api/streaming")
+      .then((d) => {
+        if (d && d.ok && d.groups) setData({ groups: d.groups, label: d.label ?? "", total: d.total ?? 0 });
+        else setFailed(true);
+      })
+      .catch(() => setFailed(true));
+  };
 
   useEffect(() => {
-    let alive = true;
-    fetch("/api/streaming")
-      .then((r) => r.json())
-      .then((d) => {
-        if (d.ok && alive) setData({ groups: d.groups, label: d.label, total: d.total });
-      })
-      .catch(() => {});
-    return () => { alive = false; };
+    // defer 1 tick (padrão do projeto p/ react-hooks/set-state-in-effect)
+    const t = setTimeout(load, 0);
+    return () => clearTimeout(t);
   }, []);
 
   const shown = data?.groups.filter((g) => platform === "all" || g.platform === platform) ?? [];
@@ -62,6 +69,19 @@ export function StreamingView() {
         </p>
       </div>
 
+      {failed ? (
+        <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-border py-16 text-center">
+          <WifiOff className="h-8 w-8 text-muted-foreground" />
+          <p className="text-sm font-bold">Não deu para carregar a grade de streaming agora.</p>
+          <p className="text-xs text-muted-foreground">Sua conexão pode estar instável — tente de novo.</p>
+          <button onClick={load} className="flex items-center gap-1.5 rounded-xl border border-primary/40 bg-primary/10 px-4 py-2 text-sm font-bold text-primary transition hover:bg-primary/20">
+            <RotateCcw className="h-4 w-4" /> Tentar novamente
+          </button>
+        </div>
+      ) : loading ? (
+        <div className="flex items-center justify-center py-24"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
+      ) : (
+      <>
       {/* filtro de plataformas */}
       <div className="no-scrollbar mb-5 flex gap-2 overflow-x-auto pb-1">
         <button
@@ -128,6 +148,8 @@ export function StreamingView() {
             💡 Tudo aqui é real: plataformas de <b className="text-foreground">animes</b> vêm dos links oficiais cadastrados na AniList; <b className="text-foreground">doramas</b> mostram a emissora/streaming real do cadastro (Netflix, tvN, JTBC, Viki, U-Next...). As datas de próximo episódio são timestamps oficiais.
           </p>
         </div>
+      )}
+      </>
       )}
     </div>
   );

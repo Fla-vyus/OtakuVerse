@@ -4,7 +4,7 @@ import { create } from "zustand";
 
 export type View =
   | "home" | "explore" | "detail" | "assistant" | "calendar" | "news"
-  | "library" | "profile" | "auth" | "adult" | "legal" | "sales" | "magazines";
+  | "library" | "profile" | "auth" | "adult" | "legal" | "sales" | "magazines" | "streaming";
 
 export interface ExploreFilters {
   q: string;
@@ -107,6 +107,47 @@ const LS_PENDING_PUSH = "ov_pending_push";
 // Guarda global anti-corrida: dois upserts no mesmo tick NÃO geram dois pushes
 const gStore = globalThis as unknown as { __ovPushInFlight?: Promise<void> };
 
+// ---------- prefetch de detalhe (abrir obra fica instantâneo) ----------
+// Hover/focus/toque num card dispara o fetch do detalhe em background. Quando o
+// usuário realmente clica, a resposta já está em memória — a aba abre sem spinner.
+const gPref = globalThis as unknown as {
+  __ovPrefInFlight?: Map<string, Promise<{ ok: boolean; status: number; data: any }>>;
+  __ovPrefCache?: Map<string, { ok: boolean; status: number; data: any }>;
+};
+const prefInFlight: Map<string, Promise<{ ok: boolean; status: number; data: any }>> = (gPref.__ovPrefInFlight ??= new Map());
+const prefCache: Map<string, { ok: boolean; status: number; data: any }> = (gPref.__ovPrefCache ??= new Map());
+const PREF_CACHE_MAX = 60; // últimas 60 obras visitadas abrem na hora mesmo sem rede nova
+
+/** Busca o detalhe da obra em background (idempotente — N hovers = 1 fetch).
+ *  Retorna a resposta cached se já existe; DetailView consome o mesmo promise. */
+export function prefetchWork(id: string): Promise<{ ok: boolean; status: number; data: any }> {
+  const hit = prefCache.get(id);
+  if (hit) return Promise.resolve(hit);
+  const inflight = prefInFlight.get(id);
+  if (inflight) return inflight;
+  const p = (async () => {
+    try {
+      const r = await fetch(`/api/works/${encodeURIComponent(id)}`);
+      const data = await r.json().catch(() => ({}));
+      const res = { ok: r.ok && data?.ok === true, status: r.status, data };
+      if (res.ok) {
+        if (prefCache.size >= PREF_CACHE_MAX) {
+          const oldest = prefCache.keys().next().value;
+          if (oldest !== undefined) prefCache.delete(oldest);
+        }
+        prefCache.set(id, res);
+      }
+      return res;
+    } catch {
+      return { ok: false, status: 0, data: {} as any };
+    } finally {
+      prefInFlight.delete(id);
+    }
+  })();
+  prefInFlight.set(id, p);
+  return p;
+}
+
 /** Marca que há mudanças locais esperando sync (sobrevive a F5 e a quedas de rede). */
 function markPendingPush() {
   if (typeof window !== "undefined") {
@@ -164,6 +205,7 @@ function hashFor(state: { view: View; workId: string | null; filters?: ExploreFi
     case "news": return "#/noticias";
     case "sales": return "#/vendas";
     case "magazines": return "#/revistas";
+    case "streaming": return "#/streaming";
     case "library": return "#/biblioteca";
     case "profile": return "#/perfil";
     case "auth": return "#/conta";
@@ -191,6 +233,7 @@ function parseHash(): { view: View; workId: string | null; filters?: Partial<Exp
   }
   if (h.startsWith("#/assistente")) return { view: "assistant", workId: null };
   if (h.startsWith("#/calendario")) return { view: "calendar", workId: null };
+  if (h.startsWith("#/streaming")) return { view: "streaming", workId: null };
   if (h.startsWith("#/noticias")) return { view: "news", workId: null };
   if (h.startsWith("#/vendas")) return { view: "sales", workId: null };
   if (h.startsWith("#/revistas")) return { view: "magazines", workId: null };

@@ -131,12 +131,53 @@ async function watchdog() {
   }
 }
 
+/** Warm-up de rotas: logo após o boot, o próprio servidor "se visita" para
+ *  compilar página + rotas de API ANTES do primeiro usuário chegar. Em dev,
+ *  cada rota compila sob demanda (segundos na 1ª visita) — aqui isso acontece
+ *  em background nos primeiros segundos, então abrir o site nunca pega a
+ *  compilação fria. Sequencial e tolerante a falhas: warm-up nunca derruba nada. */
+async function warmUpRoutes() {
+  const base = `http://127.0.0.1:${process.env.PORT ?? 3000}`;
+  // espera o servidor aceitar conexões (max ~40s)
+  for (let i = 0; i < 20; i++) {
+    try {
+      const r = await fetch(`${base}/api/health`, { signal: AbortSignal.timeout(2000) });
+      if (r.ok) break;
+    } catch {}
+    await new Promise((res) => setTimeout(res, 2000));
+  }
+  // GETs que o cliente usa de verdade — compila rota + aquece cache dos dados
+  const routes = [
+    "/", // página única (SPA de hash)
+    "/api/sections", "/api/hype", "/api/news", "/api/sales", "/api/magazines",
+    "/api/streaming", "/api/schedule", "/api/status",
+    "/api/works?sort=popular&perPage=60", "/api/works/1", // detail: compila o route handler
+  ];
+  for (const r of routes) {
+    try {
+      const t0 = Date.now();
+      const res = await fetch(`${base}${r}`, { signal: AbortSignal.timeout(30_000) });
+      // lê o corpo para garantir que a resposta terminou de ser produzida
+      await res.arrayBuffer().catch(() => {});
+      console.log(`[warmup] ${r} → ${res.status} (${Date.now() - t0}ms)`);
+    } catch (e) {
+      console.warn(`[warmup] ${r} falhou (segue o baile):`, (e as Error).message);
+    }
+    await new Promise((res) => setTimeout(res, 150)); // não sufoca o servidor
+  }
+  console.log("[warmup] concluído — todas as rotas quentes para o primeiro visitante");
+}
+
 export function startBackgroundJobs() {
   if (g.__ovJobsStarted) return;
   g.__ovJobsStarted = true;
 
   // 0) restore automático se o banco foi perdido (roda antes do primeiro cron)
   setTimeout(autoRestore, 10_000);
+
+  // 0.5) warm-up de rotas: página + APIs compiladas e quentes ANTES do 1º usuário
+  //      (atraso curto: deixa o restore/primeiro rebuild do pool começar primeiro)
+  setTimeout(warmUpRoutes, 4_000);
 
   // 1) refresh do catálogo a cada 30 min (primeira passada 90s após o boot)
   setTimeout(() => {

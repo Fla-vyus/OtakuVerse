@@ -77,8 +77,8 @@ export function CalendarView() {
           <button onClick={() => setMonthOffset((m) => m - 1)} className="flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-card" aria-label="Mês anterior">
             <ChevronLeft className="h-4 w-4" />
           </button>
-          <span className="min-w-32 text-center text-sm font-black capitalize">
-            {new Date(month + "-15T12:00:00").toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}
+          <span className="min-w-32 text-center text-sm font-black">
+            {new Date(month + "-15T12:00:00").toLocaleDateString("pt-BR", { month: "long", year: "numeric" }).replace(/^(\p{L})/u, (m) => m.toUpperCase())}
           </span>
           <button onClick={() => setMonthOffset((m) => Math.min(0, m + 1))} disabled={monthOffset >= 0} className="flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-card disabled:opacity-40" aria-label="Próximo mês">
             <ChevronRight className="h-4 w-4" />

@@ -11,7 +11,7 @@ import {
   TYPE_LABEL, STATUS_LABEL, fmtDate, fmtNum, getLanguages, getNextRelease, mainAuthors,
   altNames, COUNTRY_FLAG, type WorkData, type LangInfo, type MagazineInfo,
 } from "@/lib/types";
-import { usePortal, LIB_STATUS_LABEL, type LibraryEntry } from "./store";
+import { usePortal, LIB_STATUS_LABEL, prefetchWork, type LibraryEntry } from "./store";
 import { WorkCard } from "./WorkCard";
 import { AoiMarkdown } from "./AoiMarkdown";
 import { proxyImg } from "@/lib/imgurl";
@@ -191,14 +191,15 @@ function LibraryButtons({ workId }: { workId: string }) {
 
   if (!entry) {
     return (
-      <div className="flex flex-wrap gap-2">
-        <button onClick={() => add("plan")} className="flex items-center gap-1.5 rounded-xl border border-border bg-card px-3.5 py-2 text-sm font-bold transition hover:border-primary/40 hover:bg-primary/5">
-          <BookPlus className="h-4 w-4 text-primary" /> Quero ver/ler
+      // mobile: 3 botões compactos em 1 linha (atalhos curtos); sm+: layout original
+      <div className="grid w-full grid-cols-3 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:gap-2">
+        <button onClick={() => add("plan")} className="flex items-center justify-center gap-1.5 rounded-xl border border-border bg-card px-2 py-2 text-xs font-bold transition hover:border-primary/40 hover:bg-primary/5 sm:px-3.5 sm:text-sm">
+          <BookPlus className="h-4 w-4 text-primary" /> <span className="sm:hidden">Quero</span><span className="hidden sm:inline">Quero ver/ler</span>
         </button>
-        <button onClick={() => add("reading")} className="flex items-center gap-1.5 rounded-xl border border-border bg-card px-3.5 py-2 text-sm font-bold transition hover:border-primary/40 hover:bg-primary/5">
-          <LibIcon className="h-4 w-4 text-primary" /> Estou lendo/assistindo
+        <button onClick={() => add("reading")} className="flex items-center justify-center gap-1.5 rounded-xl border border-border bg-card px-2 py-2 text-xs font-bold transition hover:border-primary/40 hover:bg-primary/5 sm:px-3.5 sm:text-sm">
+          <LibIcon className="h-4 w-4 text-primary" /> <span className="sm:hidden">Lendo</span><span className="hidden sm:inline">Estou lendo/assistindo</span>
         </button>
-        <button onClick={() => add("favorite")} className="flex items-center gap-1.5 rounded-xl border border-border bg-card px-3.5 py-2 text-sm font-bold transition hover:border-pink-400/40 hover:bg-pink-500/5">
+        <button onClick={() => add("favorite")} className="flex items-center justify-center gap-1.5 rounded-xl border border-border bg-card px-2 py-2 text-xs font-bold transition hover:border-pink-400/40 hover:bg-pink-500/5 sm:px-3.5 sm:text-sm">
           <Heart className="h-4 w-4 text-pink-500" /> Favorito
         </button>
       </div>
@@ -243,16 +244,13 @@ export function DetailView({ workId }: { workId: string }) {
 
   useEffect(() => {
     let alive = true;
-    fetch(`/api/works/${encodeURIComponent(workId)}`)
-      .then((r) => r.json().then((d) => ({ ok: r.ok, d })))
-      .then(({ ok, d }) => {
-        if (!alive) return;
-        if (ok && d.ok) setData(d);
-        else setError(d.error ?? "Erro ao carregar obra");
-      })
-      .catch(() => {
-        if (alive) setError("Erro de conexão");
-      });
+    // consome o pipeline de prefetch: se o card já começou o fetch no hover/toque,
+    // reaproveita o MESMO promise — abrir fica instantâneo; senão, busca agora.
+    prefetchWork(workId).then((res) => {
+      if (!alive) return;
+      if (res.ok) setData(res.data);
+      else setError(res.data?.error ?? (res.status === 404 ? "Obra não encontrada" : res.status === 403 ? res.data?.error ?? "Conteúdo bloqueado" : "Erro de conexão"));
+    });
     return () => {
       alive = false;
     };

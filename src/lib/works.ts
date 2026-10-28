@@ -99,6 +99,12 @@ export function invalidateWorksCache() {
   const stale = g.__ovCache;
   g.__ovCache = undefined;
   g.__ovCacheStale = stale;
+  relatedLRU.clear(); // related foi computado sobre o pool antigo — não vale mais
+}
+
+/** Versão do pool (builtAt) — rotas que cacheiam derivados invalidam junto com o pool. */
+export function poolVersion(): number {
+  return g.__ovCache?.builtAt ?? 0;
 }
 
 /** Pool de emergência: último cache válido conhecido (usado por rotas quando o banco falha). */
@@ -128,7 +134,11 @@ export function toCardWork(w: WorkData): WorkData {
 export async function getWorkById(id: string, adult = false): Promise<WorkData | null> {
   // Detalhe completo direto do banco (1 linha indexada) — não depende do pool
   // magro do cache e sempre traz synopsis/banner/siteUrl atualizados.
-  const row = await db.work.findUnique({ where: { id } });
+  let row = await db.work.findUnique({ where: { id } });
+  // alias de links antigos: a v2.8 usou ids "anilist-XXXX" — redireciona ao numérico
+  if (!row && id.startsWith("anilist-")) {
+    row = await db.work.findUnique({ where: { id: id.slice(8) } });
+  }
   if (!row) return null;
   const work = parseWork(row);
   // mesmo contrato do pool: sem adultMode não expõe adult; dramas saíram do catálogo
@@ -193,18 +203,56 @@ export function computeRelated(target: WorkData, pool: WorkData[]): RelatedBundl
   const similar = scored.slice(0, 12).map((x) => x.w);
   const also = scored.slice(12, 24).map((x) => x.w);
 
-  const authorNames = new Set(
-    target.authors.map((a) => a.name).filter(Boolean)
-  );
+  const authorNames = [...new Set(target.authors.map((a) => a.name).filter(Boolean))];
+  // com 55k obras um autor prolífico pode casar centenas — cap forte, zero regressão visual
   const byAuthorMap = new Map<string, WorkData[]>();
   for (const a of authorNames) {
-    const works = others.filter((w) => w.authors.some((x) => x.name === a));
+    const works = others
+      .filter((w) => w.authors.some((x) => x.name === a))
+      .sort((x, y) => (y.popularity ?? 0) - (x.popularity ?? 0))
+      .slice(0, RELATED_PER_AUTHOR);
     if (works.length > 0) {
-      works.sort((x, y) => (y.popularity ?? 0) - (x.popularity ?? 0));
       byAuthorMap.set(a, works);
+      if (byAuthorMap.size >= RELATED_AUTHOR_CAP) break;
     }
   }
   return { similar, also, byAuthor: [...byAuthorMap.entries()].map(([author, works]) => ({ author, works })) };
+}
+
+// ---------- Related com cache LRU (página de detalhe) ----------
+// Antes: TODA visita ao detalhe re-pontuava 55k obras e devolvia related como objetos
+// COMPLETOS → 1.26MB por resposta e ~400ms. Agora: LRU por (adulto,id) + projeção de
+// card (o client renderiza related com WorkCard — nunca usa synopsis) + invalidação
+// junto com o pool. Hit = instantâneo; miss = 1 computo só.
+const RELATED_AUTHOR_CAP = 3;   // no máx. 3 grupos "do mesmo autor" no detalhe
+const RELATED_PER_AUTHOR = 12;  // e 12 obras por grupo (o carrossel mostra ~6)
+
+const gRel = globalThis as unknown as { __ovRelatedLRU?: Map<string, { ver: number; bundle: RelatedBundle }> };
+const relatedLRU: Map<string, { ver: number; bundle: RelatedBundle }> = (gRel.__ovRelatedLRU ??= new Map());
+const RELATED_LRU_MAX = 800; // 800 obras × ~2KB de cards ≈ 1.6MB de RAM — barato
+
+export async function computeRelatedCached(target: WorkData, pool: WorkData[], adult: boolean): Promise<RelatedBundle> {
+  const key = `${adult ? "a" : "p"}:${target.id}`;
+  const ver = poolVersion();
+  const hit = relatedLRU.get(key);
+  if (hit && hit.ver === ver) {
+    // LRU de verdade: re-inserção move para o fim (Map itera por ordem de inserção)
+    relatedLRU.delete(key);
+    relatedLRU.set(key, hit);
+    return hit.bundle;
+  }
+  const full = computeRelated(target, pool);
+  const bundle: RelatedBundle = {
+    similar: full.similar.map(toCardWork),
+    also: full.also.map(toCardWork),
+    byAuthor: full.byAuthor.map((gr) => ({ author: gr.author, works: gr.works.map(toCardWork) })),
+  };
+  if (relatedLRU.size >= RELATED_LRU_MAX) {
+    const oldest = relatedLRU.keys().next().value;
+    if (oldest !== undefined) relatedLRU.delete(oldest);
+  }
+  relatedLRU.set(key, { ver, bundle });
+  return bundle;
 }
 
 // ---------- Filtros ----------

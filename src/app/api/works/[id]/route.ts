@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getWorkById, getAllWorks, computeRelated } from "@/lib/works";
+import { getWorkById, getAllWorks, computeRelatedCached } from "@/lib/works";
 import { getSessionUser } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
@@ -18,7 +18,11 @@ export async function GET(
       return NextResponse.json({ ok: false, error: "Conteúdo +18 bloqueado. Ative o Modo Adulto no perfil." }, { status: 403 });
     }
     const all = await getAllWorks(adult);
-    const related = computeRelated(work, all.filter((w) => w.classification !== "adult" || work.classification === "adult"));
+    // gating do related preservado: obra safe nunca mostra related adulto, mesmo em modo +18
+    const relPool = work.classification === "adult" ? all : all.filter((w) => w.classification !== "adult");
+    // related com LRU + projeção de card (o client renderiza com WorkCard)
+    // → resposta ~10x menor e hit instantâneo em visitas repetidas
+    const related = await computeRelatedCached(work, relPool, adult);
     return NextResponse.json({ ok: true, work, related });
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: e.message }, { status: 500 });

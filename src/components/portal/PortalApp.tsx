@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import {
   Home, Compass, Sparkles, Search, MoonStar, CalendarDays, Newspaper,
   Library, Palette, User, LogIn, LogOut, ShieldAlert, Loader2, CloudCheck, CloudOff,
-  TrendingUp, BookMarked,
+  TrendingUp, BookMarked, MonitorPlay,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { usePortal, bindHashSync, bindPendingSyncRetry, THEMES, type View } from "./store";
@@ -21,6 +21,7 @@ import { AdultZoneView } from "./AdultZoneView";
 import { LegalView } from "./LegalView";
 import { SalesView } from "./SalesView";
 import { MagazinesView } from "./MagazinesView";
+import { StreamingView } from "./StreamingView";
 
 function Logo() {
   const go = usePortal((s) => s.go);
@@ -170,6 +171,7 @@ const NAV: { view: View; label: string; icon: React.ReactNode }[] = [
   { view: "sales", label: "Vendas", icon: <TrendingUp className="h-4 w-4" /> },
   { view: "magazines", label: "Revistas", icon: <BookMarked className="h-4 w-4" /> },
   { view: "calendar", label: "Calendário", icon: <CalendarDays className="h-4 w-4" /> },
+  { view: "streaming", label: "Streaming", icon: <MonitorPlay className="h-4 w-4" /> },
   { view: "news", label: "Notícias", icon: <Newspaper className="h-4 w-4" /> },
   { view: "library", label: "Biblioteca", icon: <Library className="h-4 w-4" /> },
   { view: "assistant", label: "Aoi", icon: <Sparkles className="h-4 w-4" /> },
@@ -214,6 +216,7 @@ export function PortalApp() {
       if (h.startsWith("#/explorar")) return { view: "explore" as View, workId: null };
       if (h.startsWith("#/assistente")) return { view: "assistant" as View, workId: null };
       if (h.startsWith("#/calendario")) return { view: "calendar" as View, workId: null };
+      if (h.startsWith("#/streaming")) return { view: "streaming" as View, workId: null };
       if (h.startsWith("#/noticias")) return { view: "news" as View, workId: null };
       if (h.startsWith("#/vendas")) return { view: "sales" as View, workId: null };
       if (h.startsWith("#/revistas")) return { view: "magazines" as View, workId: null };
@@ -302,6 +305,7 @@ export function PortalApp() {
         {view === "detail" && workId && <DetailView workId={workId} />}
         {view === "assistant" && <AssistantView />}
         {view === "calendar" && <CalendarView />}
+        {view === "streaming" && <StreamingView />}
         {view === "news" && <NewsView />}
         {view === "library" && <LibraryView />}
         {view === "profile" && <ProfileView />}

@@ -74,7 +74,9 @@ function serializeDate(d) {
 
 function toRow(m) {
   return {
-    id: `anilist-${m.id}`,
+    // id NUMÉRICO puro (padrão do site inteiro) — a v2.8 usava `anilist-${m.id}` e
+    // criou 18.234 gêmeos duplicados de obras que já tinham id numérico
+    id: String(m.id),
     malId: m.idMal ?? null,
     type:
       m.format === "NOVEL"
@@ -134,7 +136,7 @@ function classifyOf(m) {
 }
 
 async function main() {
-  const have = new Set((await db.work.findMany({ select: { id: true } })).map((r) => r.id));
+  const have = new Set((await db.work.findMany({ select: { id: true } })).map((r) => String(r.id).replace(/^anilist-/, "")));
   console.log(`Obras no banco: ${have.size}`);
 
   let added = 0;
@@ -180,7 +182,7 @@ async function main() {
           continue;
         }
         emptyStreak = 0;
-        const fresh = list.filter((m) => !have.has(`anilist-${m.id}`));
+        const fresh = list.filter((m) => !have.has(String(m.id)));
         for (const m of fresh) {
           const row = toRow(m);
           const cls = classifyOf(m);

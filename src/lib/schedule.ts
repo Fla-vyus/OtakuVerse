@@ -3,6 +3,7 @@
 // e plataformas reais (links de streaming da AniList + emissoras reais da TVMaze).
 import { db } from "@/lib/db";
 import { parseWork, type WorkData } from "@/lib/types";
+import { toCardWork } from "@/lib/works";
 
 const DAY = 86400000;
 
@@ -55,7 +56,7 @@ export async function getWeeklyReleases(maxPerDay = 16): Promise<{ days: { weekd
     const t = w.nextEpisodeAt ? new Date(w.nextEpisodeAt) : null;
     if (!t || t.getTime() > in7 || t.getTime() < now - DAY) continue;
     push(t, {
-      work: w,
+      work: toCardWork(w), // client só renderiza card — payload ~6x menor
       label: `Ep ${w.nextEpisodeNum ?? "?"}`,
       detail: t.toLocaleString("pt-BR", { weekday: "short", hour: "2-digit", minute: "2-digit" }),
       dateISO: t.toISOString(),
@@ -71,7 +72,7 @@ export async function getWeeklyReleases(maxPerDay = 16): Promise<{ days: { weekd
     const t = new Date(next.getTime());
     const past = next.getTime() < now;
     push(t, {
-      work: w,
+      work: toCardWork(w), // client só renderiza card — payload ~6x menor
       label: w.type === "lightnovel" ? `Vol ${Math.max(1, Math.ceil((w.chapters ?? 10) / 9) + 1)}` : `Cap ${(w.chapters ?? 20) + 1}`,
       detail: past ? "a qualquer momento (estimado)" : WEEKDAYS[t.getDay()],
       dateISO: t.toISOString(),
@@ -170,6 +171,8 @@ export async function getStreamingSchedule(): Promise<{ label: string; generated
     if (!platform) return;
     if (!groups.has(platform)) groups.set(platform, { platform, color: colorFor(platform), kind, entries: [] });
     const g = groups.get(platform)!;
+    // a mesma obra pode chegar 2x no mesmo grupo (2 links da mesma plataforma) — dedupe
+    if (g.entries.some((e) => e.work.id === entry.work.id)) return;
     if (g.entries.length < 30) g.entries.push(entry);
   };
 
@@ -181,7 +184,7 @@ export async function getStreamingSchedule(): Promise<{ label: string; generated
     const alive = (nextT > now - 45 * DAY) || (w.startDate ? new Date(w.startDate + "T00:00:00").getTime() > now - 45 * DAY : false);
     if (!alive) continue;
     const premieredThisMonth = !!w.startDate && new Date(w.startDate + "T00:00:00").getTime() >= monthStart;
-    const entry: StreamingEntry = { work: w, kind: "anime", nextISO, live: w.status === "RELEASING", premieredThisMonth };
+    const entry: StreamingEntry = { work: toCardWork(w), kind: "anime", nextISO, live: w.status === "RELEASING", premieredThisMonth };
     const platforms = streamingSites(w.extLinks);
     if (platforms.length === 0) {
       pushEntry("Sem streaming confirmado", "streaming", entry);
@@ -197,7 +200,7 @@ export async function getStreamingSchedule(): Promise<{ label: string; generated
     const alive = (nextT > now - 45 * DAY) || (w.startDate ? new Date(w.startDate + "T00:00:00").getTime() > now - 60 * DAY : false);
     if (!alive) continue;
     const premieredThisMonth = !!w.startDate && new Date(w.startDate + "T00:00:00").getTime() >= monthStart;
-    const entry: StreamingEntry = { work: w, kind: "drama", nextISO, live: w.status === "RELEASING", premieredThisMonth };
+    const entry: StreamingEntry = { work: toCardWork(w), kind: "drama", nextISO, live: w.status === "RELEASING", premieredThisMonth };
     const platform = w.source; // emissora/plataforma REAL (Netflix, tvN, Viki, U-Next...)
     if (!platform || /^(tvN|JTBC|OCN|SBS|KBS|MBC|ENA|TV Chosun|Channel A)$/i.test(platform)) {
       pushEntry(/tv|KBS|MBC|SBS|JTBC|OCN|ENA|Chosun|Channel/i.test(platform ?? "") ? platform ?? "Canais coreanos" : "Canais coreanos", "canal", entry);

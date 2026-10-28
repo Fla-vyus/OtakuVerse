@@ -15,6 +15,15 @@ const KEEP = 10;
 const live = new PrismaClient({ datasources: { db: { url } } });
 
 async function main() {
+  // portão de sanidade: backup de um catálogo quebrado só ocuparia a rotação —
+  // pule até o banco ser restaurado (os cofres ficam protegidos pelo próprio gate)
+  const workCount = await live.$queryRawUnsafe<{ n: number }[]>("SELECT COUNT(*) n FROM Work");
+  const n = Number(workCount[0]?.n ?? 0);
+  if (n < 10_000) {
+    console.log(`banco com apenas ${n} obras — backup ADIADO (restaure o catálogo primeiro)`);
+    await live.$disconnect();
+    return;
+  }
   if (process.argv.includes("--check")) {
     const r: any = await live.$queryRawUnsafe("PRAGMA integrity_check;");
     console.log("integrity:", JSON.stringify(r));

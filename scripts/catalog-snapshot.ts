@@ -71,8 +71,30 @@ async function snapshotAccounts(): Promise<{ summary: string; bytes: number; sha
   };
 }
 
+/** Portão de sanidade: um banco DRASTICAMENTE menor que o último snapshot bom
+ *  NUNCA sobrescreve os cofres — senão um reset/queda propaga lixo por cima de
+ *  dados bons (isso aconteceu de verdade: o cofre cheio foi perdido assim). */
+function sanityGate(newCount: number): boolean {
+  try {
+    const prev = JSON.parse(readFileSync(path.join(DATA_DIR, "manifest.json"), "utf8"));
+    const prevCount = Number(prev?.catalog?.count ?? 0);
+    if (prevCount >= 10_000 && newCount < prevCount * 0.5) {
+      console.error(`  ✗ SANITY GATE: banco tem ${newCount} obras mas o último snapshot bom tinha ${prevCount}.`);
+      console.error("  ✗ Snapshot NÃO gravado — restaurar o banco antes (npx tsx scripts/catalog-restore.ts).");
+      return false;
+    }
+  } catch {} // sem manifest anterior → primeira execução, segue
+  return true;
+}
+
 async function main() {
   mkdirSync(DATA_DIR, { recursive: true });
+  // portão de sanidade ANTES de qualquer escrita — o gz é gravado dentro de snapshotCatalog
+  const preCount = await db.work.count();
+  if (!sanityGate(preCount)) {
+    await db.$disconnect();
+    process.exit(1);
+  }
   console.log("═ Snapshot: catálogo…");
   const cat = await snapshotCatalog();
   console.log(`  ✓ ${cat.count} obras → data/catalog-snapshot.jsonl.gz (${(cat.bytes / 1048576).toFixed(1)} MB, sha256 ok)`);

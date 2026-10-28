@@ -15,3 +15,10 @@ export function cachedJson(data: any, maxAge = 120, init?: ResponseInit) {
     },
   });
 }
+
+/** Cache CURTO (30s) para dados que mudam rápido (hype, notícias, sections).
+ *  O browser ainda reusa na navegação interna, mas um F5 pega dado NOVO em
+ *  até 30s — antes, max-age 120 + SWR 600 mantinha conteúdo velho até 12min. */
+export function cachedVolatile(data: any, init?: ResponseInit) {
+  return cachedJson(data, 30, init);
+}

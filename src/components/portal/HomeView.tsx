@@ -75,13 +75,22 @@ function HypeCarousel() {
 
   useEffect(() => {
     let alive = true;
+    // hidratação instantânea: o modo já visitado abre SEM esperar a rede (defer 1 tick p/ set-state-in-effect)
+    const hydrateTimer = setTimeout(() => {
+      const cachedItems = readHypeCache(hypeMode);
+      if (alive && cachedItems) {
+        setItems(cachedItems);
+        setFetchedMode(hypeMode);
+      }
+    }, 0);
     fetchJSON(`/api/hype?mode=${hypeMode}`).then((d) => {
       if (alive && d?.ok && Array.isArray(d.items) && d.items.length) {
         setItems(d.items);
         setFetchedMode(hypeMode);
+        writeHypeCache(hypeMode, d.items);
       }
     });
-    return () => { alive = false; };
+    return () => { alive = false; clearTimeout(hydrateTimer); };
   }, [hypeMode]);
 
   useEffect(() => {
@@ -333,6 +342,23 @@ function MagazineRow({ magazines }: { magazines: MagEntry[] }) {
 
 const SECTIONS_CACHE_KEY = "ov-sections-v2";
 const SECTIONS_CACHE_TTL = 30 * 60_000;
+// carrossel Hype também hidrata instantâneo — era a última seção "oco" ao reabrir o site
+const HYPE_CACHE_PREFIX = "ov-hype-v1-";
+const HYPE_CACHE_TTL = 30 * 60_000;
+
+function readHypeCache(mode: string): WorkData[] | null {
+  try {
+    const raw = sessionStorage.getItem(HYPE_CACHE_PREFIX + mode);
+    if (!raw) return null;
+    const c = JSON.parse(raw);
+    if (c?.at && Date.now() - c.at < HYPE_CACHE_TTL && Array.isArray(c.items) && c.items.length) return c.items;
+  } catch {}
+  return null;
+}
+
+function writeHypeCache(mode: string, items: WorkData[]) {
+  try { sessionStorage.setItem(HYPE_CACHE_PREFIX + mode, JSON.stringify({ at: Date.now(), items })); } catch {}
+}
 
 export function HomeView() {
   const [data, setData] = useState<{

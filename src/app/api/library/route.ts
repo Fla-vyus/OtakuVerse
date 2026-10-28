@@ -79,14 +79,18 @@ export async function DELETE(req: NextRequest) {
 }
 
 function rateLimitPost(req: NextRequest): boolean {
-  // sincronizações debounced no cliente (~1/min no máximo)
+  // burst amigável: 6 syncs por 15s por IP — cliques rápidos (favorito, lendo, nota)
+  // NUNCA mais recebem 429; abuso sustained continua bloqueado.
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "local";
   const key = `lib:${ip}`;
   const now = Date.now();
-  const g = globalThis as unknown as { __libRL?: Map<string, number> };
+  const g = globalThis as unknown as { __libRL?: Map<string, { n: number; reset: number }> };
   if (!g.__libRL) g.__libRL = new Map();
-  const last = g.__libRL.get(key) ?? 0;
-  if (now - last < 3000) return false;
-  g.__libRL.set(key, now);
-  return true;
+  const b = g.__libRL.get(key);
+  if (!b || b.reset < now) {
+    g.__libRL.set(key, { n: 1, reset: now + 15_000 });
+    return true;
+  }
+  b.n++;
+  return b.n <= 6;
 }

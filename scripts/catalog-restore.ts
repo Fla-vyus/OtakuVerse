@@ -7,7 +7,8 @@
  * Usado automaticamente pelo boot (src/lib/jobs.ts) quando o banco é perdido.
  */
 import { PrismaClient } from "@prisma/client";
-import { existsSync, readFileSync, gunzipSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import { gunzipSync } from "node:zlib";
 import { createHash } from "node:crypto";
 import path from "node:path";
 
@@ -54,13 +55,20 @@ function rowsFromSnapshot(): any[] {
 async function restoreCatalog(): Promise<number> {
   const rows = rowsFromSnapshot();
   if (!rows.length) return 0;
+  // SQLite NÃO suporta skipDuplicates no createMany — dedupe manual por id
+  // (restore é ADITIVO: rerodar depois de um restore interrompido continua de onde parou)
+  const existing = new Set<string>(
+    (await db.work.findMany({ select: { id: true } })).map((w) => w.id),
+  );
+  const fresh = rows.filter((r) => r && typeof r.id === "string" && !existing.has(r.id));
+  console.log(`  snapshot: ${rows.length} obras, novas: ${fresh.length} (já no banco: ${existing.size})`);
   const CHUNK = 400;
   let done = 0;
-  for (let i = 0; i < rows.length; i += CHUNK) {
-    const chunk = rows.slice(i, i + CHUNK);
-    await db.work.createMany({ data: chunk, skipDuplicates: true });
+  for (let i = 0; i < fresh.length; i += CHUNK) {
+    const chunk = fresh.slice(i, i + CHUNK);
+    await db.work.createMany({ data: chunk });
     done += chunk.length;
-    if (done % 4000 === 0) console.log(`  … ${done}/${rows.length}`);
+    if (done % 4000 === 0) console.log(`  … ${done}/${fresh.length}`);
   }
   return done;
 }

@@ -12,7 +12,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAllWorks, estimateChapterReleases, toCardWork } from "@/lib/works";
 import { buildNews } from "@/lib/news";
 import type { WorkData } from "@/lib/types";
-import { cachedJson } from "@/lib/httpCache";
+import { cachedJson, cachedVolatile } from "@/lib/httpCache";
 
 export const dynamic = "force-dynamic";
 
@@ -41,7 +41,7 @@ function emptyData(msg: string) {
 export async function GET(req: NextRequest) {
   const allowEmpty = req.nextUrl.searchParams.get("soft") === "1";
   if (g.__sectionsCache && Date.now() - g.__sectionsCache.at < TTL) {
-    return cachedJson({ ok: true, ...g.__sectionsCache.data, cached: true });
+    return cachedVolatile({ ok: true, ...g.__sectionsCache.data, cached: true });
   }
 
   let all: WorkData[];
@@ -152,7 +152,7 @@ export async function GET(req: NextRequest) {
       counts: { total: all.length },
     };
     g.__sectionsCache = { at: Date.now(), data };
-    return cachedJson({ ok: true, ...data });
+    return cachedVolatile({ ok: true, ...data });
   } catch (e: any) {
     // erro de processamento → stale se houver, senão soft-fail
     if (g.__sectionsCache?.data) return cachedJson({ ok: true, ...g.__sectionsCache.data, cached: true, stale: true });

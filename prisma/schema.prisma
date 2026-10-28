@@ -176,3 +176,24 @@ model NewsCache {
   fetchedAt Int    @default(0) // unix seconds
   items     String @default("[]") // JSON NewsItem[]
 }
+
+// Feed social ao vivo: reposts de fontes oficiais/comunidade + matérias da redação.
+// kind: "official" (fonte oficial/comunidade: Reddit, Kitsu…) | "editorial" (Redação OtakuVerse)
+// Idempotente: id = hash estável do conteúdo → re-ingestão nunca duplica, nunca apaga.
+model FeedPost {
+  id          String   @id
+  kind        String // official | editorial
+  source      String // "Reddit · r/manga" | "Kitsu" | "Redação OtakuVerse" | "X (Twitter)" …
+  handle      String? // @conta ou autor do post original
+  title       String?
+  body        String
+  image       String?
+  url         String? // link do post original
+  workId      String? // obra relacionada no catálogo
+  tags        String? // JSON string[]
+  publishedAt DateTime
+  createdAt   DateTime @default(now())
+
+  @@index([publishedAt])
+  @@index([kind])
+}

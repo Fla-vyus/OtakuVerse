@@ -416,19 +416,31 @@ export const usePortal = create<PortalState>((set, get) => ({
 }));
 
 /** Repetidor de pendências: com rede de volta ou a cada 90s, tenta subir o que ficou para trás.
- *  Garantia de "nada se perde" no cliente — a mudança fica no localStorage até o servidor confirmar. */
+ *  Garantia de "nada se perde" no cliente — a mudança fica no localStorage até o servidor confirmar.
+ *  + pull-on-focus: ao voltar para a aba, mescla o estado do servidor (throttle 60s) —
+ *  ações feitas em outra aba/dispositivo aparecem aqui sem recarregar nada manualmente. */
+const gPull = globalThis as unknown as { __ovLastPullAt?: number };
 export function bindPendingSyncRetry() {
   if (typeof window === "undefined") return () => {};
   const retry = () => {
     const st = usePortal.getState();
     if (st.user && hasPendingPush() && !gStore.__ovPushInFlight) st.syncCloud("push");
   };
+  const pullOnFocus = () => {
+    const st = usePortal.getState();
+    if (!st.user) return;
+    if (Date.now() - (gPull.__ovLastPullAt ?? 0) < 60_000) return; // máx 1 pull/min — focus spam não martela o servidor
+    gPull.__ovLastPullAt = Date.now();
+    if (gStore.__ovPushInFlight) return; // push em andamento já resolve a ordem certa
+    st.syncCloud("pull");
+  };
+  const onFocus = () => { retry(); pullOnFocus(); };
   window.addEventListener("online", retry);
-  window.addEventListener("focus", retry);
+  window.addEventListener("focus", onFocus);
   const iv = setInterval(retry, 90_000);
   return () => {
     window.removeEventListener("online", retry);
-    window.removeEventListener("focus", retry);
+    window.removeEventListener("focus", onFocus);
     clearInterval(iv);
   };
 }

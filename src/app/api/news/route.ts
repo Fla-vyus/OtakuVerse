@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 import { getAllWorks, peekStaleCache } from "@/lib/works";
 import { buildNews } from "@/lib/news";
 import type { WorkData } from "@/lib/types";
-import { cachedJson } from "@/lib/httpCache";
+import { cachedVolatile } from "@/lib/httpCache";
 
 export const dynamic = "force-dynamic";
 
@@ -17,5 +17,5 @@ export async function GET() {
     pool = peekStaleCache()?.works ?? [];
   }
   const items = await buildNews(pool).catch(() => []);
-  return cachedJson({ ok: true, items });
+  return cachedVolatile({ ok: true, items });
 }

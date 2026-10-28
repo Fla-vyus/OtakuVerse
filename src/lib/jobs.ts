@@ -165,7 +165,7 @@ async function warmUpRoutes() {
   // GETs que o cliente usa de verdade — compila rota + aquece cache dos dados
   const routes = [
     "/", // página única (SPA de hash)
-    "/api/sections", "/api/hype", "/api/news", "/api/sales", "/api/magazines",
+    "/api/sections", "/api/hype", "/api/news", "/api/feed", "/api/sales", "/api/magazines",
     "/api/streaming", "/api/schedule", "/api/status",
     "/api/works?sort=popular&perPage=60", "/api/works/1", // detail: compila o route handler
   ];
@@ -221,4 +221,18 @@ export function startBackgroundJobs() {
   // 4) watchdog: auto-diagnóstico a cada 5 min (primeira passada 1 min após o boot)
   setTimeout(watchdog, 60_000);
   setInterval(watchdog, 5 * 60_000);
+
+  // 5) ingestão do Feed Social (Reddit + Kitsu) a cada 6h — leve, mas com guarda de
+  //    memória igual aos jobs pesados; primeira passada 3 min após o boot.
+  const doFeed = () => {
+    memOk(1100).then((ok) => {
+      if (!ok) return;
+      runScript("scripts/feed-ingest.ts", 240_000).then((out) => {
+        const line = out.split("\n").find((l) => l.includes("ingestão concluída"));
+        if (line) console.log("[feed]", line.trim());
+      }).catch((e) => console.warn("[feed] ingestão falhou (tenta de novo no próximo ciclo):", (e as Error).message));
+    });
+  };
+  setTimeout(doFeed, 3 * 60_000);
+  setInterval(doFeed, 6 * 60 * 60_000);
 }

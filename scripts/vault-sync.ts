@@ -54,6 +54,21 @@ async function main() {
   const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
   mkdirSync(`${VAULT}/latest`, { recursive: true });
   mkdirSync(`${VAULT}/historico`, { recursive: true });
+
+  // ---------- 0) PORTÃO DE SANIDADE ----------
+  // um banco drasticamente menor que o último cofre bom NUNCA sobrescreve o cofre
+  // (proteção anti-propagação: cofres bons sobrevivem a resets/quedas do banco)
+  try {
+    const prevCount = Number(JSON.parse(readFileSync(`${VAULT}/latest/manifesto.json`, "utf8"))?.catalog?.count ?? 0);
+    const nowCount = await db.work.count();
+    if (prevCount >= 10_000 && nowCount < prevCount * 0.5) {
+      console.error(`  ✗ SANITY GATE: banco tem ${nowCount} obras mas o cofre anterior tinha ${prevCount}.`);
+      console.error("  ✗ Cofre NÃO sobrescrito — restaure o banco antes (npx tsx scripts/catalog-restore.ts).");
+      await db.$disconnect();
+      process.exit(1);
+    }
+  } catch {} // primeiro cofre ou manifesto ausente → segue
+
   const report: any = { app: "OtakuVerse", at: new Date().toISOString(), files: {} };
 
   // ---------- 1) cópia SQLite consistente ----------

@@ -6,7 +6,7 @@ import { db } from "@/lib/db";
 import { classify } from "@/lib/works";
 import { parseWork } from "@/lib/types";
 import { getAllWorks, invalidateWorksCache } from "@/lib/works";
-import { cachedJson } from "@/lib/httpCache";
+import { cachedVolatile } from "@/lib/httpCache";
 
 export const dynamic = "force-dynamic";
 
@@ -37,7 +37,7 @@ export async function GET(req: NextRequest) {
   if (!MODES[mode]) return NextResponse.json({ ok: false, error: "Modo inválido" }, { status: 400 });
 
   if (g.__hypeCache && Date.now() - g.__hypeCache.at < TTL && g.__hypeCache.data[mode]) {
-    return cachedJson({ ok: true, mode, items: g.__hypeCache.data[mode], cached: true });
+    return cachedVolatile({ ok: true, mode, items: g.__hypeCache.data[mode], cached: true });
   }
 
   // 1) tenta ao vivo na AniList (hype REAL do momento)
@@ -64,7 +64,7 @@ export async function GET(req: NextRequest) {
     })();
 
     g.__hypeCache = { ...(g.__hypeCache ?? { at: 0, data: {} }), at: Date.now(), data: { ...(g.__hypeCache?.data ?? {}), [mode]: items } };
-    return cachedJson({ ok: true, mode, items, source: "anilist-live" });
+    return cachedVolatile({ ok: true, mode, items, source: "anilist-live" });
   } catch {
     // 2) fallback: ordena o banco local (getAllWorks tem stale-while-revalidate — nunca trava)
     try {
@@ -79,7 +79,7 @@ export async function GET(req: NextRequest) {
         .filter((w) => w.banner || (w.popularity ?? 0) > 50000)
         .sort(sorters[mode])
         .slice(0, 14);
-      return cachedJson({ ok: true, mode, items, source: "db" });
+      return cachedVolatile({ ok: true, mode, items, source: "db" });
     } catch {
       return NextResponse.json({ ok: false, error: "Fontes temporariamente indisponíveis", items: [] }, { status: 200 });
     }

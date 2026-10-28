@@ -85,13 +85,37 @@ async function main() {
     console.log("  ! dump .sql indisponível (sem sqlite3 CLI nem python3) — db/jsonl/csv cobrem");
   }
 
-  // ---------- 3) JSONL sem compressão (legível/greppável) ----------
+  // ---------- 3) JSONL sem compressão (legível/greppável) — em STREAMING para
+  // não segurar 125MB de string na memória (a box tem 4GB e o servidor dev vive nela) ----------
   const rows = await db.work.findMany({ orderBy: { id: "asc" } });
-  const chunks: string[] = [];
-  for (const r of rows) chunks.push(JSON.stringify(r) + "\n");
-  const jsonl = chunks.join("");
-  const rj = writeVerified(`${VAULT}/latest/catalogo.jsonl`, jsonl);
-  const lineCount = jsonl.split("\n").filter((l) => l.trim()).length;
+  const jsonlPath = `${VAULT}/latest/catalogo.jsonl`;
+  const { openSync, writeSync, closeSync } = await import("node:fs");
+  const fd = openSync(jsonlPath, "w");
+  let lineCount = 0;
+  let jsonlSha = createHash("sha256");
+  try {
+    let buf = "";
+    for (const r of rows) {
+      buf += JSON.stringify(r) + "\n";
+      lineCount++;
+      if (buf.length >= 4 * 1024 * 1024) {
+        const b = Buffer.from(buf, "utf8");
+        jsonlSha.update(b);
+        writeSync(fd, b);
+        buf = "";
+      }
+    }
+    if (buf) {
+      const b = Buffer.from(buf, "utf8");
+      jsonlSha.update(b);
+      writeSync(fd, b);
+    }
+  } finally {
+    closeSync(fd);
+  }
+  const jsonlBytes = statSync(jsonlPath).size;
+  const reSha = createHash("sha256").update(readFileSync(jsonlPath)).digest("hex");
+  const rj = { bytes: jsonlBytes, sha: reSha, verified: reSha === jsonlSha.digest("hex") };
   console.log(`  ✓ catalogo.jsonl (${lineCount} obras, ${(rj.bytes / 1048576).toFixed(1)} MB, sha ok=${rj.verified})`);
 
   // ---------- 4) CSV das colunas essenciais (planilha) ----------

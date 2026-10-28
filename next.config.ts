@@ -5,6 +5,8 @@ const nextConfig: NextConfig = {
   reactStrictMode: false,
   compress: true,
   poweredByHeader: false,
+  // preview do sandbox acessa _next/* pelo domínio space-z.ai — autoriza sem warning
+  allowedDevOrigins: ["*.space-z.ai"],
   async headers() {
     return [
       {

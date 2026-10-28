@@ -26,17 +26,33 @@ const POOL_SELECT = {
   banner: true, status: true, chapters: true, volumes: true, episodes: true,
   duration: true, startDate: true, endDate: true, country: true, isAdult: true,
   classification: true, adultTags: true, genres: true, tags: true, avgScore: true,
-  popularity: true, favourites: true, authors: true, extLinks: true, magazine: true,
+  popularity: true, favourites: true, authors: true, magazine: true,
   source: true, lastUpdate: true, nextEpisodeAt: true, nextEpisodeNum: true,
-  coverAlts: true, langs: true, ptTags: true, trending: true, trendingAt: true,
+  coverAlts: true, ptTags: true, trending: true, trendingAt: true,
   spicy: true, follows: true, createdAt: true,
 } as const;
+// NOTA v2.8: extLinks/langs saíram do pool — extLinks só o calendário usa (busca na
+// hora para os ~90 animes no ar, 1 query) e langs nunca é lido no servidor.
+// A box tem 4GB e o OOM matou o servidor com 1.9GB — cada campo conta.
+
+const POOL_TAG_CAP = 15; // top-15 por rank no pool — economia real de memória em 55k obras
+                          // (cards usam 2, IA usa 6, related usa overlap dos relevantes;
+                          //  o DETALHE continua com TODAS as tags via getWorkById)
 
 async function buildCache(): Promise<Cache> {
   const agg = await db.work.aggregate({ _max: { createdAt: true } });
   const maxUpdatedAt = agg._max.createdAt?.getTime() ?? 0;
   const rows = await db.work.findMany({ select: POOL_SELECT });
-  const works = rows.map(parseWork);
+  const works = rows.map((r) => {
+    const w = parseWork(r);
+    // 55k obras × 15-25 tags = ~150MB só de tags low-rank; o pool guarda as relevantes
+    if (w.tags.length > POOL_TAG_CAP) {
+      w.tags = [...w.tags].sort((a, b) => b.rank - a.rank).slice(0, POOL_TAG_CAP);
+    }
+    // sinônimos além de 6 nunca são encontrados na prática na busca — fora do pool
+    if (w.synonyms && w.synonyms.length > 6) w.synonyms = w.synonyms.slice(0, 6);
+    return w;
+  });
   return { works, builtAt: Date.now(), maxUpdatedAt };
 }
 

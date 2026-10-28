@@ -122,7 +122,8 @@ async function watchdog() {
     const issues: string[] = [];
     if (dbMs > 2000) issues.push(`banco lento (${dbMs}ms)`);
     if (works === 0) issues.push("pool de obras vazio (banco perdido ou boot frio?)");
-    if (rssMB > 1200) issues.push(`memória alta (${rssMB}MB)`);
+    if (rssMB > 1500) issues.push(`memória CRÍTICA (${rssMB}MB — OOM da box é 1.9GB, considere reiniciar)`);
+    else if (rssMB > 1100) issues.push(`memória alta (${rssMB}MB)`);
     if (issues.length) console.warn(`[watchdog] atenção: ${issues.join(" · ")}`);
     else console.log(`[watchdog] ok — banco ${dbMs}ms, pool ${works} obras, rss ${rssMB}MB`);
   } catch (e) {

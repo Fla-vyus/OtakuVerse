@@ -2,6 +2,7 @@
 // nextEpisodeAt) + capítulos estimados das séries ativas + grade do mês.
 import { NextRequest, NextResponse } from "next/server";
 import { getAllWorks, estimateChapterReleases, toCardWork } from "@/lib/works";
+import { db } from "@/lib/db";
 import type { WorkData } from "@/lib/types";
 import { cachedJson } from "@/lib/httpCache";
 
@@ -10,12 +11,13 @@ export const dynamic = "force-dynamic";
 interface ChapterSlot { workId: string; title: string; cover: string | null; coverColor: string | null; nextChapter: number | null; when: string; stale: boolean; }
 
 /** Episódio da grade semanal: só os campos que o CalendarView realmente usa
- *  (antes ia o objeto completo — payload de 500KB para o mesmo visual). */
-function episodeSlot(w: WorkData) {
+ *  (antes ia o objeto completo — payload de 500KB para o mesmo visual).
+ *  extLinks vem do extMap (busca dedicada — o pool não carrega mais esse campo). */
+function episodeSlot(w: WorkData, extLinks: any[]) {
   return {
     id: w.id, title: w.title, cover: w.cover, coverColor: w.coverColor,
     nextEpisodeAt: w.nextEpisodeAt, nextEpisodeNum: w.nextEpisodeNum,
-    extLinks: w.extLinks,
+    extLinks,
   };
 }
 
@@ -37,10 +39,22 @@ export async function GET(req: NextRequest) {
     .filter((w) => w.type === "anime" && w.nextEpisodeAt && new Date(w.nextEpisodeAt).getTime() > now - 86400000)
     .filter((w) => new Date(w.nextEpisodeAt!).getTime() < now + 9 * 86400000);
 
+  // extLinks saiu do pool (economia de memória na box de 4GB) — busca 1x para os no ar
+  const extMap = new Map<string, any[]>();
+  if (airing.length) {
+    const rows = await db.work.findMany({
+      where: { id: { in: airing.map((w) => w.id) } },
+      select: { id: true, extLinks: true },
+    }).catch(() => []);
+    for (const r of rows) {
+      try { extMap.set(r.id, r.extLinks ? JSON.parse(r.extLinks) : []); } catch { extMap.set(r.id, []); }
+    }
+  }
+
   const byWeekday: { day: number; items: ReturnType<typeof episodeSlot>[] }[] = Array.from({ length: 7 }, (_, day) => ({ day, items: [] }));
   for (const w of airing) {
     const d = new Date(w.nextEpisodeAt!);
-    byWeekday[d.getDay()].items.push(episodeSlot(w));
+    byWeekday[d.getDay()].items.push(episodeSlot(w, extMap.get(w.id) ?? []));
   }
   for (const d of byWeekday) d.items.sort((a, b) => (a.nextEpisodeAt ?? "").localeCompare(b.nextEpisodeAt ?? ""));
 

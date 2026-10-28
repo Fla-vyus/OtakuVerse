@@ -116,7 +116,10 @@ function FeedCard({ post }: { post: FeedPost }) {
           {post.body.split("\n\n").map((p, i) => <p key={i}>{p}</p>)}
         </div>
         {post.body.length > 220 && (
-          <button onClick={() => setExpanded((e) => !e)} className="mt-1 flex items-center gap-1 text-[11px] font-bold text-primary hover:underline">
+          <button
+            onClick={() => setExpanded((e) => !e)}
+            className="mt-0.5 -mb-1 flex min-h-[36px] items-center gap-1 py-2 pr-3 text-[11px] font-bold text-primary hover:underline"
+          >
             {expanded ? "recolher" : "ler mais"} <ChevronDown className={`h-3 w-3 transition ${expanded ? "rotate-180" : ""}`} />
           </button>
         )}

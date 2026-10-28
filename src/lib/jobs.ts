@@ -225,7 +225,9 @@ export function startBackgroundJobs() {
   // 5) ingestão do Feed Social (Reddit + Kitsu) a cada 6h — leve, mas com guarda de
   //    memória igual aos jobs pesados; primeira passada 3 min após o boot.
   const doFeed = () => {
-    memOk(1100).then((ok) => {
+    // 1450: o ingest é leve (RSS + upsert de ~30 rows), mas o servidor estável fica
+    // em ~1300MB — limiar menor faria o job ser adiado PARA SEMPRE
+    memOk(1450).then((ok) => {
       if (!ok) return;
       runScript("scripts/feed-ingest.ts", 240_000).then((out) => {
         const line = out.split("\n").find((l) => l.includes("ingestão concluída"));

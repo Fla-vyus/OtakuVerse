@@ -21,6 +21,6 @@ export async function register() {
     });
   }
 
-  const { startBackgroundJobs } = await import("./src/lib/jobs");
+  const { startBackgroundJobs } = await import("./lib/jobs");
   startBackgroundJobs();
 }

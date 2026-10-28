@@ -100,9 +100,19 @@ async function autoRestore() {
     const { promisify } = await import("node:util");
     const { stdout } = await promisify(execFile)("npx", ["tsx", "-e", `import {PrismaClient} from "@prisma/client"; const db = new PrismaClient(); db.work.count().then(async (n) => { console.log("COUNT=" + n); await db.$disconnect(); });`], { cwd: process.cwd(), timeout: 60_000 });
     const count = Number(/COUNT=(\d+)/.exec(stdout)?.[1] ?? 0);
-    if (count < 10_000) {
-      console.log(`[restore] banco com ${count} obras — restaurando do snapshot git-safe…`);
-      const { stdout: out2 } = await promisify(execFile)("npx", ["tsx", "scripts/catalog-restore.ts"], { cwd: process.cwd(), timeout: 600_000 });
+    // Marca d'água: o manifest guarda a última contagem boa conhecida do snapshot.
+    // O limiar fixo de 10k deixava passar perda PARCIAL (ex.: 37.574 → 24.807 passava
+    // batido e o site ficava ralo sem ninguém perceber). Agora qualquer queda ≥ 10%
+    // contra o último snapshot bom dispara restore aditivo.
+    let expected = 0;
+    try {
+      const manifest = JSON.parse(fs.readFileSync(process.cwd() + "/data/manifest.json", "utf8"));
+      expected = Number(manifest.catalog?.count ?? 0);
+    } catch {}
+    const floor = expected > 10_000 ? Math.floor(expected * 0.9) : 10_000;
+    if (count < floor) {
+      console.log(`[restore] banco com ${count} obras (esperado ≥ ${floor}) — restaurando do snapshot git-safe…`);
+      const { stdout: out2 } = await promisify(execFile)("npx", ["tsx", "scripts/catalog-restore.ts", "--force"], { cwd: process.cwd(), timeout: 600_000 });
       console.log("[restore]", out2.split("\n").slice(-3).join(" | "));
     }
   } catch (e) {

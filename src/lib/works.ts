@@ -395,7 +395,10 @@ export async function getFacets(adult = false) {
   const tags = [...tagCount.entries()].sort((a, b) => b[1] - a[1]).slice(0, 80).map(([name, count]) => ({ name, count }));
   const magazines = [...magCount.entries()].sort((a, b) => b[1] - a[1]).slice(0, 50).map(([name, count]) => ({ name, count }));
   const result = { genres, tags, magazines, at: Date.now() };
-  gFacets.__ovFacets = result;
+  // NUNCA cacheia facets vazias: se o boot pegar o banco a meio restore, o dropdown
+  // ficaria sem opções de gênero/tag por um TTL inteiro (bug do "sumiu as opções").
+  // Sem cache, a próxima chamada recalcula contra o pool já cheio.
+  if (genres.length > 0) gFacets.__ovFacets = result;
   return result;
 }
 

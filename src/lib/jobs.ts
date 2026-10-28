@@ -260,9 +260,12 @@ export function startBackgroundJobs() {
   // 0) restore automático se o banco foi perdido (roda antes do primeiro cron)
   setTimeout(autoRestore, 10_000);
 
-  // 0.5) warm-up de rotas: página + APIs compiladas e quentes ANTES do 1º usuário
-  //      (atraso curto: deixa o restore/primeiro rebuild do pool começar primeiro)
-  setTimeout(warmUpRoutes, 4_000);
+  // 0.5) warm-up de rotas: SÓ em dev (Turbopack compila sob demanda, aquecer evita
+  //      cold start de segundos). Em produção standalone não existe compilação —
+  //      rotas respondem em ~100ms de qualquer forma — e o warmup cria um PICO de
+  //      memória no boot (~1.1GB em Bun) que pode ser OOM-killed em containers de
+  //      deploy com limite baixo (health check da plataforma morre com ele).
+  if (process.env.NODE_ENV !== "production") setTimeout(warmUpRoutes, 4_000);
 
   // 1) refresh do catálogo a cada 30 min (primeira passada 90s após o boot)
   setTimeout(() => {

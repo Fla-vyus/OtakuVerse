@@ -305,6 +305,7 @@ export function DetailView({ workId }: { workId: string }) {
               }
               alt=""
               referrerPolicy="no-referrer"
+              decoding="async"
               onError={() => setImgStage((s) => s + 1)}
               className="h-full w-full object-cover"
             />
@@ -323,6 +324,8 @@ export function DetailView({ workId }: { workId: string }) {
                   src={proxy ?? ""}
                   alt={`Capa de ${w.title}`}
                   referrerPolicy="no-referrer"
+                  decoding="async"
+                  fetchPriority="high"
                   onError={() => setImgStage((s) => s + 1)}
                   className="aspect-[2/3] w-full object-cover"
                 />

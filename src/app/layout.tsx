@@ -14,10 +14,17 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"),
   title: "OtakuVerse — Mangás, Manhwas, LNs e Animes com curadoria de IA",
   description:
     "Portal brasileiro para garimpar mangás, manhwas, manhuas, light novels e animes: catálogo real com dezenas de milhares de obras, hype do momento, vendas (Oricon), revistas, calendário de capítulos, notícias, nuvem pessoal, temas e a waifu curadora Aoi.",
   keywords: ["mangá", "manhwa", "manhua", "light novel", "anime", "ecchi", "webtoon", "vendas", "oricon", "revistas", "recomendações", "IA", "waifu"],
+  alternates: { canonical: "/" },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: { index: true, follow: true, "max-image-preview": "large" },
+  },
   icons: {
     icon: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg",
   },
@@ -26,6 +33,7 @@ export const metadata: Metadata = {
     description: "Seu garimpo de mangás, manhwas, LNs e animes com a waifu curadora Aoi.",
     siteName: "OtakuVerse",
     type: "website",
+    locale: "pt_BR",
   },
 };
 

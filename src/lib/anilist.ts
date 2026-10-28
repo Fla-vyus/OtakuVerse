@@ -108,17 +108,38 @@ export function toWorkRow(m: any) {
   };
 }
 
-export async function anilistFetch(query: string, variables: Record<string, unknown>, opts?: { timeoutMs?: number }): Promise<any> {
-  const res = await fetch(API, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Accept: "application/json" },
-    body: JSON.stringify({ query, variables }),
-    signal: AbortSignal.timeout(opts?.timeoutMs ?? 20000),
-    cache: "no-store",
-  });
-  const json: any = await res.json();
-  if (json.errors) throw new Error(json.errors[0]?.message ?? "Erro AniList");
-  return json.data;
+export async function anilistFetch(query: string, variables: Record<string, unknown>, opts?: { timeoutMs?: number; tries?: number }): Promise<any> {
+  // Resiliência: a AniList dá 429 (rate limit) e 5xx/timeout ocasionais. Em vez de
+  // falhar na 1ª tentativa (cron perdia a janela inteira, busca ao vivo ficava vazia),
+  // tentamos até 3x com backoff crescente. 429 respeita o Retry-After quando enviado.
+  const tries = opts?.tries ?? 3;
+  for (let attempt = 1; attempt <= tries; attempt++) {
+    try {
+      const res = await fetch(API, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ query, variables }),
+        signal: AbortSignal.timeout(opts?.timeoutMs ?? 20000),
+        cache: "no-store",
+      });
+      if (res.status === 429 || res.status >= 500) {
+        const retryAfter = Number(res.headers.get("retry-after") ?? 0);
+        const wait = retryAfter > 0 ? retryAfter * 1000 : 1200 * attempt;
+        throw Object.assign(new Error(`AniList ${res.status}`), { __retryable: true, __wait: wait });
+      }
+      const json: any = await res.json();
+      if (json.errors) throw new Error(json.errors[0]?.message ?? "Erro AniList");
+      return json.data;
+    } catch (e: any) {
+      const retryable = e?.__retryable || e?.name === "TimeoutError" || e?.name === "AbortError" || /fetch failed|network/i.test(String(e?.message));
+      if (attempt < tries && retryable) {
+        await new Promise((r) => setTimeout(r, e?.__wait ?? 1200 * attempt));
+        continue;
+      }
+      throw e;
+    }
+  }
+  throw new Error("AniList inacessível");
 }
 
 export async function searchAniList(q: string, opts?: { type?: "ANIME" | "MANGA"; perPage?: number }): Promise<any[]> {

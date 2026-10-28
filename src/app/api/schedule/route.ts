@@ -28,7 +28,8 @@ export async function GET(req: NextRequest) {
   }
   const sp = req.nextUrl.searchParams;
   const month = sp.get("month") ?? new Date().toISOString().slice(0, 7);
-  const all = await getAllWorks();
+  try {
+    const all = await getAllWorks();
   const now = Date.now();
 
   // --- Semana: animes com próximo episódio datado ---
@@ -71,6 +72,11 @@ export async function GET(req: NextRequest) {
     .map(toCardWork);
 
   const data = { byWeekday, chaptersByWeekday, month, monthItems };
-  g.__schedCache = { at: Date.now(), data };
-  return cachedJson({ ok: true, ...data });
+    g.__schedCache = { at: Date.now(), data };
+    return cachedJson({ ok: true, ...data });
+  } catch (e: any) {
+    // isolamento: banco indisponível → stale na hora, senão ok:false (nunca 500)
+    if (g.__schedCache?.data) return cachedJson({ ok: true, ...g.__schedCache.data, cached: true, stale: true });
+    return cachedJson({ ok: false, error: String(e?.message ?? e) });
+  }
 }

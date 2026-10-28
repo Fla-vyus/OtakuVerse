@@ -4,6 +4,10 @@ import { destroySession } from "@/lib/auth";
 export const dynamic = "force-dynamic";
 
 export async function POST() {
-  await destroySession();
+  try {
+    await destroySession();
+  } catch {
+    // isolamento: falha ao limpar sessão não pode quebrar o logout do cliente
+  }
   return NextResponse.json({ ok: true });
 }

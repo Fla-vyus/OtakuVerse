@@ -95,6 +95,41 @@ async function autoRestore() {
   }
 }
 
+/** Cofre EXTERNO (/home/z/otakuverse-vault): o mesmo banco em vários formatos
+ *  (.db, .sql, .jsonl, .csv) em um lugar fora do projeto — sobrevive mesmo se o
+ *  diretório inteiro do site for apagado. Roda após o snapshot git-safe. */
+async function doVault(reason = "6h") {
+  try {
+    const out = await runScript("scripts/vault-sync.ts", 600_000);
+    console.log(`[vault ${reason}]`, out.split("\n").filter((l) => l.startsWith("  ✓") || l.includes("COFRE")).slice(-3).join(" | "));
+  } catch (e) {
+    console.error(`[vault ${reason}] falhou (snapshot git-safe continua válido):`, (e as Error).message);
+  }
+}
+
+/** Watchdog: auto-diagnóstico a cada 5 min — o site NUNCA fica quebrado em
+ *  silêncio. Checa: banco responde, pool de obras vivo, memória sob controle,
+ *  imagem-cache não estourou. Problemas aparecem no log com [watchdog]. */
+async function watchdog() {
+  try {
+    const t0 = Date.now();
+    const prisma = (await import("@/lib/db")).db;
+    await prisma.$queryRawUnsafe("SELECT 1");
+    const dbMs = Date.now() - t0;
+    const works = (await import("@/lib/works")).peekStaleCache()?.works.length ?? 0;
+    const mem = process.memoryUsage();
+    const rssMB = Math.round(mem.rss / 1048576);
+    const issues: string[] = [];
+    if (dbMs > 2000) issues.push(`banco lento (${dbMs}ms)`);
+    if (works === 0) issues.push("pool de obras vazio (banco perdido ou boot frio?)");
+    if (rssMB > 1200) issues.push(`memória alta (${rssMB}MB)`);
+    if (issues.length) console.warn(`[watchdog] atenção: ${issues.join(" · ")}`);
+    else console.log(`[watchdog] ok — banco ${dbMs}ms, pool ${works} obras, rss ${rssMB}MB`);
+  } catch (e) {
+    console.error("[watchdog] BANCO NÃO RESPONDE:", (e as Error).message);
+  }
+}
+
 export function startBackgroundJobs() {
   if (g.__ovJobsStarted) return;
   g.__ovJobsStarted = true;
@@ -120,6 +155,12 @@ export function startBackgroundJobs() {
 
   // 3) snapshot git-safe a cada 6h (primeira passada 20 min após o boot)
   //    + auto-commit → qualquer crescimento fica guardado no git, imune a reset.
-  setTimeout(() => doSnapshot("boot"), 20 * 60_000);
-  setInterval(() => doSnapshot("6h"), 6 * 60 * 60_000);
+  //    Na sequência, o cofre externo replica tudo em vários formatos fora do site.
+  const snapshotCycle = () => doSnapshot("6h").then(() => doVault("6h")).catch(() => {});
+  setTimeout(snapshotCycle, 20 * 60_000);
+  setInterval(snapshotCycle, 6 * 60 * 60_000);
+
+  // 4) watchdog: auto-diagnóstico a cada 5 min (primeira passada 1 min após o boot)
+  setTimeout(watchdog, 60_000);
+  setInterval(watchdog, 5 * 60_000);
 }

@@ -14,7 +14,8 @@ export async function GET() {
   if (g.__salesCache && Date.now() - g.__salesCache.at < TTL) {
     return cachedJson({ ok: true, ...g.__salesCache.data, cached: true });
   }
-  const pool = await getAllWorks();
+  try {
+    const pool = await getAllWorks();
 
   const resolve = (name: string, aliases?: string[]) => {
     const w = matchWork(name, aliases, pool);
@@ -45,6 +46,11 @@ export async function GET() {
     source: "Rankings públicos da Oricon e acumulados divulgados por editoras — números aproximados; capas do catálogo real",
     updatedAt: new Date().toISOString(),
   };
-  g.__salesCache = { at: Date.now(), data };
-  return cachedJson({ ok: true, ...data });
+    g.__salesCache = { at: Date.now(), data };
+    return cachedJson({ ok: true, ...data });
+  } catch (e: any) {
+    // isolamento: banco indisponível → stale na hora, senão ok:false (nunca 500)
+    if (g.__salesCache?.data) return cachedJson({ ok: true, ...g.__salesCache.data, cached: true, stale: true });
+    return cachedJson({ ok: false, error: String(e?.message ?? e) });
+  }
 }

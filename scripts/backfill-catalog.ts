@@ -57,7 +57,10 @@ async function anilistFetch(query, variables) {
       continue;
     }
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return res.json();
+    const j = await res.json();
+    // erros GraphQL NUNCA podem ser silenciosos (200 com errors = lista vazia sem explicação)
+    if (j?.errors?.length) throw new Error(`GraphQL: ${j.errors[0]?.message ?? "erro desconhecido"}`);
+    return j;
   }
   throw new Error("AniList indisponível após 3 tentativas");
 }
@@ -120,13 +123,14 @@ function toRow(m) {
 function classifyOf(m) {
   const tags = (m.tags ?? []).map((t) => ({ name: t.name, rank: t.rank ?? 0 }));
   if (m.isAdult || m.format === "DOUJIN" || tags.some((t) => /hentai|doujin/i.test(t.name))) {
-    return { classification: "adult", adultTags: JSON.stringify(["+18", "Adulto"]) };
+    // spicy sincronizado desde o nascimento (camada sensorial: 0 livre · 1 ecchi · 2 adulto)
+    return { classification: "adult", adultTags: JSON.stringify(["+18", "Adulto"]), spicy: 2 };
   }
   const has = (n) => tags.some((t) => t.name === n);
   if (has("Ecchi") || has("Nudity") || has("Sexual Content")) {
-    return { classification: "suggestive", adultTags: "[]" };
+    return { classification: "suggestive", adultTags: "[]", spicy: 1 };
   }
-  return { classification: "safe", adultTags: "[]" };
+  return { classification: "safe", adultTags: "[]", spicy: 0 };
 }
 
 async function main() {
@@ -143,6 +147,7 @@ async function main() {
       let emptyStreak = 0;
       for (let p = startPage; p <= MAX_PAGES; p++) {
         let list = [];
+        let raw = "";
         try {
           const q = await anilistFetch(
             `query ($p: Int, $type: MediaType, $country: CountryCode, $format: MediaFormat) {
@@ -152,7 +157,8 @@ async function main() {
             }`,
             { p, type: t.type, country: t.country, format: t.format ?? undefined }
           );
-          list = q?.Page?.media ?? [];
+          list = q?.data?.Page?.media ?? []; // envelope GraphQL: { data: { Page: { media } } }
+          if (!list.length) raw = JSON.stringify(q).slice(0, 240);
         } catch (e) {
           const msg = String(e?.message ?? e);
           if (msg.includes("HTTP 400")) {
@@ -169,6 +175,7 @@ async function main() {
         }
         if (!list.length) {
           emptyStreak++;
+          console.log(`  ${key} p${p}: página vazia (streak ${emptyStreak}) — resposta: ${raw}`);
           if (emptyStreak >= 2) break;
           continue;
         }
@@ -178,7 +185,7 @@ async function main() {
           const row = toRow(m);
           const cls = classifyOf(m);
           try {
-            await db.work.create({ data: { ...row, classification: cls.classification, adultTags: cls.adultTags } });
+            await db.work.create({ data: { ...row, classification: cls.classification, adultTags: cls.adultTags, spicy: cls.spicy } });
             have.add(row.id);
             added++;
           } catch {}

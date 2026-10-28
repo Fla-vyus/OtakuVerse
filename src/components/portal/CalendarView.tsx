@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { CalendarDays, ChevronLeft, ChevronRight, Loader2, Clock, Tv, BookOpen } from "lucide-react";
 import { usePortal } from "./store";
+import { fetchJSON } from "@/lib/fetchClient";
 import { WorkCard } from "./WorkCard";
 import type { WorkData } from "@/lib/types";
 
@@ -52,12 +53,10 @@ export function CalendarView() {
 
   useEffect(() => {
     let alive = true;
-    fetch(`/api/schedule?month=${month}`)
-      .then((r) => r.json())
-      .then((d) => {
-        if (alive && d.ok) setData(d);
-      })
-      .catch(() => {});
+    // timeout + 3 tentativas — rede instável nunca deixa o calendário em spinner infinito
+    fetchJSON(`/api/schedule?month=${month}`).then((d) => {
+      if (alive && d?.ok) setData(d);
+    });
     return () => {
       alive = false;
     };

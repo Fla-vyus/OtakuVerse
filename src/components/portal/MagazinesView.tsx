@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { BookMarked, Loader2, Clock, Building2, ChevronRight } from "lucide-react";
 import { usePortal } from "./store";
+import { fetchJSON } from "@/lib/fetchClient";
 
 interface MagEntry {
   name: string;
@@ -29,10 +30,7 @@ export function MagazinesView() {
   const [data, setData] = useState<{ magazines: MagEntry[]; worksWithMagazine: number } | null>(null);
 
   useEffect(() => {
-    fetch("/api/magazines")
-      .then((r) => r.json())
-      .then((d) => (d.ok ? setData(d) : null))
-      .catch(() => {});
+    fetchJSON("/api/magazines").then((d) => (d?.ok ? setData(d) : null));
   }, []);
 
   return (

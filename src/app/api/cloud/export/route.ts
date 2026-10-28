@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
+  try {
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ ok: false, error: "Não autenticado" }, { status: 401 });
   const items = await db.libraryItem.findMany({ where: { userId: user.id } });
@@ -36,4 +37,8 @@ export async function GET() {
       "Content-Disposition": `attachment; filename="otakuverse-backup-${user.username}-${new Date().toISOString().slice(0, 10)}.json"`,
     },
   });
+  } catch (e: any) {
+    // isolamento: export nunca deve derrubar o cliente com 500 sem JSON
+    return NextResponse.json({ ok: false, error: String(e?.message ?? e) }, { status: 500 });
+  }
 }

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { TrendingUp, Loader2, BookOpen, Trophy, Layers, ExternalLink } from "lucide-react";
 import { usePortal } from "./store";
+import { fetchJSON } from "@/lib/fetchClient";
 
 interface SaleItem {
   series: string;
@@ -38,10 +39,7 @@ export function SalesView() {
   const [data, setData] = useState<{ volumes: SaleItem[]; series: SaleItem[]; allTime: SaleItem[]; source: string } | null>(null);
 
   useEffect(() => {
-    fetch("/api/sales")
-      .then((r) => r.json())
-      .then((d) => (d.ok ? setData(d) : null))
-      .catch(() => {});
+    fetchJSON("/api/sales").then((d) => (d?.ok ? setData(d) : null));
   }, []);
 
   const list: SaleItem[] = !data

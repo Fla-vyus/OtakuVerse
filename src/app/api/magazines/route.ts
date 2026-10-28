@@ -14,7 +14,8 @@ export async function GET() {
   if (g.__magsCache && Date.now() - g.__magsCache.at < TTL) {
     return cachedJson({ ok: true, ...g.__magsCache.data, cached: true });
   }
-  const all = await getAllWorks();
+  try {
+    const all = await getAllWorks();
 
   // agrupa por nome de revista presente no banco (dado real de MangaUpdates/derivado)
   const groups = new Map<string, { works: typeof all; info: any }>();
@@ -56,6 +57,11 @@ export async function GET() {
     worksWithMagazine: realMagazines.reduce((s, m) => s + m.count, 0),
     genericWorks,
   };
-  g.__magsCache = { at: Date.now(), data };
-  return cachedJson({ ok: true, ...data });
+    g.__magsCache = { at: Date.now(), data };
+    return cachedJson({ ok: true, ...data });
+  } catch (e: any) {
+    // isolamento: banco indisponível → stale na hora, senão ok:false (nunca 500)
+    if (g.__magsCache?.data) return cachedJson({ ok: true, ...g.__magsCache.data, cached: true, stale: true });
+    return cachedJson({ ok: false, error: String(e?.message ?? e) });
+  }
 }

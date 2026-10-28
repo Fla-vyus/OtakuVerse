@@ -165,7 +165,7 @@ async function warmUpRoutes() {
   // GETs que o cliente usa de verdade — compila rota + aquece cache dos dados
   const routes = [
     "/", // página única (SPA de hash)
-    "/api/sections", "/api/hype", "/api/news", "/api/feed", "/api/sales", "/api/magazines",
+    "/api/sections", "/api/hype", "/api/news", "/api/sales", "/api/magazines",
     "/api/streaming", "/api/schedule", "/api/status",
     "/api/works?sort=popular&perPage=60", "/api/works/1", // detail: compila o route handler
   ];
@@ -222,19 +222,23 @@ export function startBackgroundJobs() {
   setTimeout(watchdog, 60_000);
   setInterval(watchdog, 5 * 60_000);
 
-  // 5) ingestão do Feed Social (Reddit + Kitsu) a cada 6h — leve, mas com guarda de
-  //    memória igual aos jobs pesados; primeira passada 3 min após o boot.
-  const doFeed = () => {
-    // 1450: o ingest é leve (RSS + upsert de ~30 rows), mas o servidor estável fica
-    // em ~1300MB — limiar menor faria o job ser adiado PARA SEMPRE
+  // 5) backfill de capas — ~18.5k obras ficaram sem capa em um backfill antigo
+  //    (a AniList tem as imagens). Idempotente: quando o catálogo está completo,
+  //    a passada termina em segundos ("nada a fazer"). Diário e com guarda de memória.
+  const doCoverBackfill = () => {
     memOk(1450).then((ok) => {
       if (!ok) return;
-      runScript("scripts/feed-ingest.ts", 240_000).then((out) => {
-        const line = out.split("\n").find((l) => l.includes("ingestão concluída"));
-        if (line) console.log("[feed]", line.trim());
-      }).catch((e) => console.warn("[feed] ingestão falhou (tenta de novo no próximo ciclo):", (e as Error).message));
+      runScript("scripts/cover-backfill.ts", 8 * 60_000).then((out) => {
+        const line = out.split("\n").find((l) => l.includes("backfill de capas") || l.includes("nada a fazer"));
+        if (line) console.log("[capas]", line.trim());
+      }).catch((e) => console.warn("[capas] backfill falhou (tenta no próximo ciclo):", (e as Error).message));
     });
   };
-  setTimeout(doFeed, 3 * 60_000);
-  setInterval(doFeed, 6 * 60 * 60_000);
+  setTimeout(doCoverBackfill, 2.5 * 60_000);
+  setInterval(doCoverBackfill, 24 * 60 * 60_000);
+
+  // NOTA: o ingest do Feed Social (Reddit/Kitsu) foi DESATIVADO junto com a aba
+  // "Feed ao vivo" (removida a pedido do usuário — não entregou o valor esperado).
+  // Os posts existentes continuam no banco (FeedPost) e o script scripts/feed-ingest.ts
+  // segue disponível para reativação manual se um dia a aba voltar.
 }

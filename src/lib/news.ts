@@ -12,6 +12,7 @@ export interface NewsItem {
   summary: string;
   body: string; // texto editorial completo (parágrafos separados por \n\n)
   image: string | null;
+  imageWide?: boolean; // true = banner paisagem (recobre bem) · false/ausente = capa retrato (UI usa contain + blur)
   date: string;
   workId: string | null; // null quando a fonte externa não casou com o catálogo
   badge: string;
@@ -37,6 +38,13 @@ const HYPE_LEADS = [
 
 function pick<T>(arr: T[], i: number): T {
   return arr[i % arr.length];
+}
+
+/** Qualidade de imagem nas notícias: o pool guarda capas "large" (~230px) —
+ *  esticadas para ~700px viram borrão. O CDN da AniList serve "extraLarge" (~460px)
+ *  no MESMO nome de arquivo: basta trocar o segmento de tamanho. Banner já é 1050px. */
+function hiResCover(u: string): string {
+  return u.replace("/cover/large/", "/cover/extraLarge/");
 }
 
 /** Procura a obra no pool por id (e, se vier de fonte externa, por título normalizado). */
@@ -131,7 +139,8 @@ async function liveHypeItems(pool: WorkData[]): Promise<NewsItem[]> {
         title: `${title} dispara no hype`,
         summary,
         body: `${lead}. ${summary}${ctx}${m.nextAiringEpisode ? `\n\nO próximo episódio (${m.nextAiringEpisode.episode}) já tem data marcada — vale deixar na lista para não perder o embalo.` : ""}`,
-        image: m.bannerImage ?? m.coverImage?.extraLarge ?? null,
+        image: m.bannerImage ?? (m.coverImage?.extraLarge ? hiResCover(m.coverImage.extraLarge) : null),
+        imageWide: !!m.bannerImage,
         date: new Date().toISOString(),
         workId: String(m.id),
         badge: "Hype agora",
@@ -154,7 +163,8 @@ async function liveHypeItems(pool: WorkData[]): Promise<NewsItem[]> {
           title: `${title} figura entre os mais acompanhados`,
           summary: `Está entre os títulos com mais seguidores cadastrados na fonte alternativa (${fmtNum(k.userCount)} usuários).`,
           body: `${pick(HYPE_LEADS, i)(title)} — pelos dados da fonte alternativa, acumula ${fmtNum(k.userCount)} seguidores cadastrados.${hit ? " " + contextParagraph(hit) : k.desc ? `\n\n${k.desc}` : ""}`,
-          image: hit ? (hit.banner ?? hit.cover) : k.image,
+          image: hit ? (hit.banner ?? hiResCover(hit.cover)) : k.image,
+          imageWide: !!hit?.banner,
           date: new Date().toISOString(),
           workId: hit?.id ?? null,
           badge: "Em alta",
@@ -209,7 +219,8 @@ async function buildNewsInner(pool: WorkData[]): Promise<NewsItem[]> {
         body: isFuture
           ? `A contagem regressiva começou: ${w.title} tem estreia confirmada para ${fmtDate(w.startDate)}${w.episodes ? ` com previsão de ${w.episodes} episódios` : ""}.\n\n${contextParagraph(w)} Quem quiser entrar cedo já pode salvar na biblioteca e acompanhar o lançamento capítulo a capítulo.`
           : `${w.title} está oficialmente disponível desde ${fmtDate(w.startDate)}${w.episodes ? ` — são ${w.episodes} episódios previstos` : ""}.\n\n${contextParagraph(w)} Com esse currículo inicial, a tendência é o boca a boca crescer nas próximas semanas.`,
-        image: w.banner ?? w.cover,
+        image: w.banner ?? hiResCover(w.cover),
+        imageWide: !!w.banner,
         date: isFuture ? new Date(now).toISOString() : (w.startDate!.length === 10 ? w.startDate + "T12:00:00Z" : w.startDate!),
         workId: w.id,
         badge: isFuture ? "Chega em" : "Estreia",
@@ -230,7 +241,8 @@ async function buildNewsInner(pool: WorkData[]): Promise<NewsItem[]> {
         title: `${w.title} volta com o ep ${w.nextEpisodeNum}`,
         summary: `Próximo episódio confirmado: ${d.toLocaleString("pt-BR", { weekday: "long", hour: "2-digit", minute: "2-digit" })} (${d.toLocaleDateString("pt-BR")}).`,
         body: `A pausa acabou: ${w.title} retorna com o episódio ${w.nextEpisodeNum ?? "seguinte"} confirmado para ${d.toLocaleString("pt-BR", { weekday: "long", hour: "2-digit", minute: "2-digit" })} (${d.toLocaleDateString("pt-BR")}) — horário já convertido para o seu fuso.\n\n${contextParagraph(w)}`,
-        image: w.banner ?? w.cover,
+        image: w.banner ?? hiResCover(w.cover),
+        imageWide: !!w.banner,
         date: w.nextEpisodeAt!,
         workId: w.id,
         badge: "Retorna",
@@ -250,7 +262,8 @@ async function buildNewsInner(pool: WorkData[]): Promise<NewsItem[]> {
         title: `${w.title}: ${fmtNum(w.favourites)} favoritos`,
         summary: `Consolidado entre as obras mais amadas da história — nota ${w.avgScore ?? "?"}% e ${fmtNum(w.popularity)} usuários acompanhando.`,
         body: `Alguns números falam por si: ${w.title} já acumula ${fmtNum(w.favourites)} favoritos e ${fmtNum(w.popularity)} usuários acompanhando, com nota média de ${w.avgScore ?? "?"}%.\n\n${contextParagraph(w)} É o tipo de obra que atravessa gerações de leitores — se você ainda não conferiu, está na hora.`,
-        image: w.banner ?? w.cover,
+        image: w.banner ?? hiResCover(w.cover),
+        imageWide: !!w.banner,
         date: w.startDate ? w.startDate + "T12:00:00Z" : new Date().toISOString(),
         workId: w.id,
         badge: "Marco",

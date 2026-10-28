@@ -8,9 +8,9 @@ datasource db {
 }
 
 model Work {
-  id             String   @id // anilist-<id> | drama-<slug>
+  id             String   @id // id numérico puro da AniList (ex.: "16498") | md-<uuid> do MangaDex | kt-<id> do Kitsu
   malId          Int?
-  type           String // manga | manhwa | manhua | lightnovel | anime | drama
+  type           String // manga | manhwa | manhua | lightnovel | anime
   format         String?
   title          String
   titleEn        String?

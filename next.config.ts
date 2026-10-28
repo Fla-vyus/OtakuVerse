@@ -1,5 +1,8 @@
 import type { NextConfig } from "next";
 
+// NOTA: os headers de segurança (CSP, HSTS, XFO, nosniff, referrer, permissions)
+// vivem em UM lugar só: src/proxy.ts (convenção Next 16 que substitui middleware).
+// Não recrie aqui — headers duplicados com valores diferentes conflitam no browser.
 const nextConfig: NextConfig = {
   output: "standalone",
   reactStrictMode: false,
@@ -15,20 +18,6 @@ const nextConfig: NextConfig = {
   // o indicador "N" do dev mode fica SOBRE a bottom nav no mobile — desligado
   // (é só um atalho de dev; production nunca teve isso)
   devIndicators: false,
-  async headers() {
-    return [
-      {
-        source: "/(.*)",
-        headers: [
-          { key: "X-Content-Type-Options", value: "nosniff" },
-          { key: "X-Frame-Options", value: "SAMEORIGIN" },
-          { key: "Referrer-Policy", value: "no-referrer" },
-          { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
-          { key: "X-DNS-Prefetch-Control", value: "on" },
-        ],
-      },
-    ];
-  },
 };
 
 export default nextConfig;

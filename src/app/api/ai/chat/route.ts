@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import ZAI from "z-ai-web-dev-sdk";
 import { getAllWorks } from "@/lib/works";
 import { db } from "@/lib/db";
+import { rateLimit } from "@/lib/auth";
 import type { WorkData } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -113,6 +114,11 @@ REGRAS DE FORMATAÇÃO (críticas):
 
 export async function POST(req: NextRequest) {
   try {
+    // rate limit: a Aoi é a rota mais cara (IA + pool) — abuso aqui derruba a experience de todos
+    const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || req.headers.get("x-real-ip") || "local";
+    if (!rateLimit(req, `aichat:${ip}`, 15, 60_000)) {
+      return NextResponse.json({ ok: false, error: "Calma, senpai~ muita mensagem seguida. Tenta de novo em um minutinho." }, { status: 429 });
+    }
     const body = await req.json().catch(() => ({}));
     const messages: { role: "user" | "assistant"; content: string }[] = Array.isArray(body.messages)
       ? body.messages.slice(-10)

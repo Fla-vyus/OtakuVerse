@@ -9,13 +9,15 @@ export default function proxy(_req: NextRequest) {
 
   // Content-Security-Policy: mantém o site fechado (só self + inline necessário
   // para hidratação/estilos do Next). Imagens externas passam pelo proxy /api/img.
+  // Em dev, ws: entra no connect-src para o HMR do Turbopack (websocket) funcionar.
+  const dev = process.env.NODE_ENV !== "production";
   const csp = [
     "default-src 'self'",
     "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob:",
     "font-src 'self' data:",
-    "connect-src 'self'",
+    `connect-src 'self'${dev ? " ws: wss:" : ""}`,
     "media-src 'self'",
     "object-src 'none'",
     "base-uri 'self'",

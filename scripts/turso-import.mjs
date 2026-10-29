@@ -88,9 +88,11 @@ for (const t of tables) {
   if (cols.length === 0) continue;
 
   // sem rowid? (WITHOUT ROWID) — fallback: paginação por OFFSET
-  const hasRowid = await local.execute(
-    `SELECT COUNT(*) AS n FROM pragma_table_list WHERE name = ${JSON.stringify(name)} AND wr = 0`
-  );
+  // (bind por parâmetro: aspas duplas viram identificador no SQLite!)
+  const hasRowid = await local.execute({
+    sql: "SELECT COUNT(*) AS n FROM pragma_table_list WHERE name = ? AND wr = 0",
+    args: [name],
+  });
   const useRowid = Number(hasRowid.rows[0]?.n ?? 0) > 0 && name !== "sqlite_sequence";
 
   let remoteCount = 0;
@@ -111,16 +113,36 @@ for (const t of tables) {
   }
 
   const CHUNK = 200;
-  let last = 0, offset = 0, copied = 0;
-  for (;;) {
-    const sel = useRowid
-      ? `SELECT * FROM ${q} WHERE rowid > ${last} ORDER BY rowid LIMIT ${CHUNK}`
-      : `SELECT * FROM ${q} LIMIT ${CHUNK} OFFSET ${offset}`;
-    const res = await local.execute(sel);
-    const rows = res.rows;
+  let copied = 0;
+
+  // Snapshot congelado de rowids ANTES de paginar: linhas deletadas/reinseridas
+  // por jobs concorrentes mudam de rowid e reapareceriam num cursor "> last"
+  // (visto em produção: UNIQUE constraint no Work.id). Com a lista congelada,
+  // cada id é lido exatamente uma vez.
+  let ids = null;
+  if (useRowid) {
+    const idRes = await local.execute(`SELECT rowid FROM ${q} ORDER BY rowid`);
+    ids = idRes.rows.map((r) => Number(r.rowid));
+  }
+
+  for (let off = 0; ; off += CHUNK) {
+    let res;
+    if (ids) {
+      const slice = ids.slice(off, off + CHUNK);
+      if (slice.length === 0) break;
+      const marks = slice.map(() => "?").join(", ");
+      res = await local.execute({
+        sql: `SELECT rowid AS __rid, * FROM ${q} WHERE rowid IN (${marks})`,
+        args: slice,
+      });
+    } else {
+      res = await local.execute(`SELECT rowid AS __rid, * FROM ${q} LIMIT ${CHUNK} OFFSET ${off}`);
+    }
+    const rows = res.rows.map((r) => {
+      const { __rid, ...rest } = r;
+      return rest;
+    });
     if (rows.length === 0) break;
-    if (useRowid) last = Number(rows[rows.length - 1].rowid ?? 0);
-    offset += rows.length;
 
     const colList = cols.map((c) => `"${c}"`).join(", ");
     const stmts = [];
@@ -131,7 +153,8 @@ for (const t of tables) {
         .map(() => `(${cols.map(() => "?").join(", ")})`)
         .join(", ");
       const params = slice.flatMap((r) => cols.map((c) => r[c] ?? null));
-      stmts.push({ sql: `INSERT INTO ${q} (${colList}) VALUES ${valuesSql}`, args: params });
+      // OR REPLACE: idempotente — reimport/reexecução nunca quebra em UNIQUE
+      stmts.push({ sql: `INSERT OR REPLACE INTO ${q} (${colList}) VALUES ${valuesSql}`, args: params });
     }
     try {
       await remote.batch(stmts, "write");
@@ -139,7 +162,7 @@ for (const t of tables) {
     } catch (e) {
       const msg = String(e?.message ?? e);
       errors.push(`Dados ${name}: ${msg}`);
-      console.warn(`  ✗ ${name}: falha no lote (${copied}/${offset} copiadas) — ${msg}`);
+      console.warn(`  ✗ ${name}: falha no lote (${copied}/${off} copiadas) — ${msg}`);
       break;
     }
   }

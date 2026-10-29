@@ -47,6 +47,14 @@ export const metadata: Metadata = {
     siteName: "OtakuVerse",
     type: "website",
     locale: "pt_BR",
+    url: "/",
+    images: [{ url: "/icons/icon-512.png", width: 512, height: 512, alt: "OtakuVerse — portal de cultura pop asiática" }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "OtakuVerse — Mangás, Manhwas, Webnovels, LNs e Animes",
+    description: "Catálogo real com dezenas de milhares de obras, curadoria da waifu Aoi, vendas da Oricon e mais. Grátis, em PT-BR.",
+    images: ["/icons/icon-512.png"],
   },
 };
 

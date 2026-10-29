@@ -22,7 +22,6 @@ function TypeIcon({ type }: { type: string }) {
 /** Card de obra — capas reais via proxy multi-fonte; se ambas falharem, card de texto estilizado (nunca imagem fake)
  *  No hover da capa aparecem as ações rápidas: curtir ❤️ e salvar 🔖 */
 export const WorkCard = memo(function WorkCard({ work, rank, badge, caption }: { work: WorkData; rank?: number; badge?: string; caption?: string }) {
-  const openWork = usePortal((s) => s.openWork);
   const proxy = proxyImg(work.cover, work.coverAlt);
   const direct = work.coverAlt ?? work.cover ?? null;
   // 0=proxy, 1=direta, 2=texto — pula direto para texto se não há URL utilizável
@@ -62,18 +61,13 @@ export const WorkCard = memo(function WorkCard({ work, rank, badge, caption }: {
   }
 
   return (
-    <div
-      role="button"
-      tabIndex={0}
-      onClick={() => openWork(work.id)}
+    <a
+      href={`#/obra/${work.id}`}
       // prefetch: hover/tecla/toque já baixa o detalhe — o clique abre sem spinner
       onPointerEnter={() => prefetchWork(work.id)}
       onFocus={() => prefetchWork(work.id)}
       onTouchStart={() => prefetchWork(work.id)}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") openWork(work.id);
-      }}
-      className="cv-auto group relative w-full cursor-pointer overflow-hidden rounded-2xl border border-border bg-card text-left transition-all duration-300 hover:-translate-y-1 hover:shadow-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+      className="cv-auto group relative block w-full cursor-pointer overflow-hidden rounded-2xl border border-border bg-card text-left transition-all duration-300 hover:-translate-y-1 hover:shadow-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
       aria-label={`${work.title} — ${TYPE_LABEL[work.type]}`}
     >
       <div className="relative aspect-[2/3] w-full overflow-hidden" style={{ background: work.coverColor ? `${work.coverColor}22` : "var(--muted)" }}>
@@ -183,7 +177,7 @@ export const WorkCard = memo(function WorkCard({ work, rank, badge, caption }: {
           </span>
         </div>
       </div>
-    </div>
+    </a>
   );
 });
 
@@ -265,19 +259,13 @@ export function CoverThumb({ work, className }: { work: WorkData; className?: st
 
 /** Card do "Para Você" com % de afinidade e motivos da recomendação */
 export function ForYouCard({ work, match, reasons, highlight }: { work: WorkData; match: number; reasons: string[]; highlight?: boolean }) {
-  const openWork = usePortal((s) => s.openWork);
   const pct = Math.max(40, Math.min(99, Math.round(60 + match * 8)));
   return (
-    <div
-      role="button"
-      tabIndex={0}
-      onClick={() => openWork(work.id)}
+    <a
+      href={`#/obra/${work.id}`}
       onPointerEnter={() => prefetchWork(work.id)}
       onTouchStart={() => prefetchWork(work.id)}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") openWork(work.id);
-      }}
-      className={`cv-auto group relative w-full cursor-pointer overflow-hidden rounded-2xl border bg-card text-left transition-all duration-300 hover:-translate-y-1 hover:shadow-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 ${
+      className={`cv-auto group relative block w-full cursor-pointer overflow-hidden rounded-2xl border bg-card text-left transition-all duration-300 hover:-translate-y-1 hover:shadow-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 ${
         highlight ? "border-primary/70 ring-2 ring-primary/40" : "border-border"
       }`}
     >
@@ -291,7 +279,7 @@ export function ForYouCard({ work, match, reasons, highlight }: { work: WorkData
           <p className="mt-1 line-clamp-2 text-[10px] leading-snug text-primary">✨ {reasons.join(" · ")}</p>
         )}
       </div>
-    </div>
+    </a>
   );
 }
 

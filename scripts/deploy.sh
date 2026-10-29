@@ -55,6 +55,15 @@ fi
 #      marcador agora, mas remover o diretório intruso evita qualquer ambiguidade).
 rm -rf .next/standalone/scripts 2>/dev/null || true
 
+# 2.7) v3.9.5 — PORTÃO DE CREDENCIAIS: sem o runtime json dentro do standalone a
+#      plataforma sobe em modo FILE silencioso (catálogo mínimo importado de
+#      fontes externas — incidente "funciona, está limitado" de 30/10).
+if [ ! -s .next/standalone/otakuverse.runtime.json ]; then
+  log "ERRO: otakuverse.runtime.json ausente/vazio no standalone — payload subiria sem Turso/Aoi. Abortando."
+  exit 1
+fi
+log "portão de credenciais OK: runtime json presente no standalone"
+
 # 3) Mata TUDO que possa servir na 3000 (next-server é o nome real do processo)
 log "parando servidor antigo…"
 pkill -f "next-server" 2>/dev/null

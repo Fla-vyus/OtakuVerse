@@ -65,5 +65,24 @@ fi
 #    container sem banco (descoberto no teste de contrato da plataforma v3.9)
 rm -f "$S"/.env "$S"/.env.production "$S"/.env.local
 
+# 6) v3.9.5 — GARANTIA do otakuverse.runtime.json dentro do standalone.
+#    O outputFileTracingIncludes do next.config NÃO é honrado de forma estável
+#    pelo Turbopack (standalone de 30/10 saiu SEM o json). Local isso passa
+#    despercebido porque o runtime-env acha o json no PAI do standalone; na
+#    plataforma o standalone é órfão → sem json = modo FILE silencioso (sem
+#    Turso, sem Aoi, catálogo importado gota-a-gota — incidente "site limitado").
+#    Cópia explícita a partir da raiz + verificação dura (fonte da verdade = raiz).
+if [ -f otakuverse.runtime.json ]; then
+  cp -f otakuverse.runtime.json "$S/otakuverse.runtime.json"
+  echo "[slim] runtime json copiado para o standalone ($(wc -c < "$S/otakuverse.runtime.json") bytes)"
+else
+  echo "[slim] ERRO: otakuverse.runtime.json ausente na raiz — payload subiria sem Turso/Aoi. Abortando."
+  exit 1
+fi
+if [ ! -s "$S/otakuverse.runtime.json" ]; then
+  echo "[slim] ERRO: cópia do runtime json falhou/vazia — abortando."
+  exit 1
+fi
+
 DEPOIS=$(du -sm "$S" | cut -f1)
 echo "[slim] standalone: ${ANTES}MB → ${DEPOIS}MB (poda v3.9)"

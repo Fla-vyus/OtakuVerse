@@ -1,5 +1,6 @@
 // Servidor: acesso ao banco de obras (cache em memória) + filtros + similaridade
 import { db, isLibsqlMode } from "@/lib/db";
+import { isRemoteDb } from "@/lib/runtime-env";
 import { parseWork, type WorkData, type Classification } from "@/lib/types";
 
 // v3.8 — serverless (Vercel): o pool inicial pode ser hidratado do snapshot
@@ -67,7 +68,11 @@ const g = globalThis as unknown as {
   __ovCacheStale?: Cache; // último cache válido — emergência quando o banco falha
   __ovEmptyRetryAt?: number; // anti-loop: último retry pós-rebuild-vazio (máx. 1 a cada 5 min)
 };
-const TTL = 900_000; // 15 min — invalidação explícita por seeds/cron + SWR cobrem o meio-termo
+// v3.9.4 — em modo remoto (Turso) o rebuild do pool é o pico de RAM da instância
+// (rows pela rede + parse + objetos JS) e acontece inteiro de uma vez. TTL de
+// 60min em vez de 15: o topo popular muda devagar, o stale-while-revalidate
+// mantém o site fluido e o pico vira evento raro (1x/hora, não 4x/hora).
+const TTL = isRemoteDb ? 3_600_000 : 900_000; // 60min remoto · 15min local
 
 // Projeção do pool: campos pesados que SÓ o detalhe usa ficam de fora do rebuild
 // (sinopse ~70% do peso; siteUrl/network só aparecem no detalhe). banner/extLinks

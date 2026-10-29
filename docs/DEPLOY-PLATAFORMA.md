@@ -69,3 +69,30 @@ o que o health check da plataforma exige (rota? porta? tempo?).
 - Token do Turso: trocar no runtime json + restart
 - O `db/custom.db` local continua para dev offline (scripts dev/start agora
   priorizam o runtime json; `DATABASE_URL` externo sempre vence)
+
+## v3.9.4 — portão com medição de memória + gravador de voo
+
+A queda pós-publish (site sobe, funciona um tempo, depois 502 em tudo) foi
+OOM: o container da plataforma roda numa Function Compute com limite de
+memória, e o pool cheio de 40k obras levava o bun a 1165MB de pico (SIGKILL,
+proxy sem upstream, instância não volta sozinha). Blindagens:
+
+- **POOL_MAX** (runtime json): 6000 públicas + fatia adulta — pico medido
+  397MB, assentado ~203MB. Ajuste fino SEM rebuild: só mudar o json e republish.
+- **TTL do pool 60min** em modo remoto (o rebuild é o pico — 1x/hora, não 4x).
+- **Refresh não invalida o pool** a cada 30min — só quando o catálogo cresce.
+- **/api/img blindado**: semáforo global (8 downloads, fila 64), LRU de
+  memória por bytes (32MB), cache em disco com teto de 256MB, rate-limiter
+  com purge. Antes: fetches ilimitados por visitante + disco sem teto.
+- **Gravador de voo** `standalone/data/events.log`: boot, watchdog (5min,
+  com rss/pool/db), refresh, signals, uncaughtException/unhandledRejection.
+  Sobrevive a restarts do processo — é o rastro da próxima queda.
+
+Portão de pré-publicação COM memória: `bash scripts/bun-gate.sh` (contrato
+bun + env -i + cwd standalone, amostra RSS por 40s, aquece health/works/
+sections/home e reporta o pico). Publicar só com pico < 450MB.
+
+Monitoramento pós-publish (sem acesso aos logs da plataforma):
+`curl https://otkverse.space-z.ai/api/health` → `memory.rssMB` e
+`worksCache.size` mostram a saúde da instância; `502/403 FCCommonError` =
+processo morto (ver events.log no próximo pacote).

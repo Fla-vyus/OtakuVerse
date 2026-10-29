@@ -16,6 +16,9 @@ export async function doRefresh(): Promise<{ refreshed: number; expanded: number
   g.__cronRunning = true;
   let refreshed = 0;
   let expanded = 0;
+  const { flight } = await import("@/lib/flightlog");
+  const t0 = Date.now();
+  flight("refresh-start", { rssMB: Math.round(process.memoryUsage().rss / 1048576) });
   try {
     // 1) refresca o que está em tendência agora (hype real + next episodes)
     const data = await anilistFetch(
@@ -67,11 +70,19 @@ export async function doRefresh(): Promise<{ refreshed: number; expanded: number
         await new Promise((r) => setTimeout(r, 2200)); // respeita rate limit AniList
       }
     }
-    invalidateWorksCache();
+    // v3.9.4 — invalidação CONDICIONAL: o rebuild do pool é o pico de RAM da
+    // instância publicada (puxa milhares de rows do Turso + parse de objetos).
+    // Invalidar a cada ciclo forçava um rebuild EXTRA a cada 30min mesmo quando
+    // nada cresceu. O pool tem TTL com stale-while-revalidate — updates de
+    // tendência (refreshed) aparecem na revalidação natural; só um catálogo que
+    // CRESCOU (expanded>0) justifica o pico imediato.
+    if (expanded > 0) invalidateWorksCache();
     g.__cronLast = Date.now();
     await db.eventLog.create({ data: { kind: "cron_refresh", payload: JSON.stringify({ refreshed, expanded }) } });
+    flight("refresh-end", { refreshed, expanded, ms: Date.now() - t0, rssMB: Math.round(process.memoryUsage().rss / 1048576) });
   } catch (e) {
     console.error("cron refresh error:", e);
+    flight("refresh-error", { msg: String((e as Error)?.message ?? e).slice(0, 200), ms: Date.now() - t0 });
   } finally {
     g.__cronRunning = false;
   }

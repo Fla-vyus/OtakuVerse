@@ -1,6 +1,7 @@
 // v3.9 — runtime-env primeiro: garante DATABASE_URL/AI_* do otakuverse.runtime.json
 // antes de qualquer job/rota ler env (a plataforma não injeta variáveis).
 import "./lib/runtime-env";
+import { isRemoteDb } from "./lib/runtime-env";
 
 // Auto-update em background: refresh do catálogo a cada 30 min + backup diário do DB.
 // A lógica Node vive em src/lib/jobs.ts — o guard com NEXT_RUNTIME estático permite
@@ -17,12 +18,23 @@ export async function register() {
   // Sem isso, uma promise perdida num job de fundo derruba o servidor inteiro.
   if (!g.__ovProcGuards) {
     g.__ovProcGuards = true;
+    // v3.9.4 — gravador de voo: o rastro em disco sobrevive ao processo
+    const { flight } = await import("./lib/flightlog");
+    const rssMB = () => Math.round((process.memoryUsage?.().rss ?? 0) / 1048576);
+    flight("boot", { rssMB: rssMB(), node: process.version, remote: isRemoteDb, poolMax: process.env.OTAKUVERSE_POOL_MAX ?? "" });
     process.on("uncaughtException", (err) => {
       console.error("[process] uncaughtException (servidor segue de pé):", err?.stack || err);
+      flight("uncaughtException", { msg: String(err?.message ?? err).slice(0, 200), rssMB: rssMB() });
     });
     process.on("unhandledRejection", (reason) => {
       console.error("[process] unhandledRejection (servidor segue de pé):", reason instanceof Error ? reason.stack : reason);
+      flight("unhandledRejection", { msg: String(reason instanceof Error ? reason.message : reason).slice(0, 200), rssMB: rssMB() });
     });
+    for (const sig of ["SIGTERM", "SIGINT"] as const) {
+      process.on(sig, () => {
+        flight("signal", { sig, rssMB: rssMB() });
+      });
+    }
   }
 
   const { startBackgroundJobs } = await import("./lib/jobs");

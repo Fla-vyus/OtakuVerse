@@ -4,6 +4,7 @@
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { isRemoteDb } from "@/lib/runtime-env";
+import { flight } from "@/lib/flightlog";
 //
 // Durabilidade em camadas (nada se perde):
 //   1. backup SQLite diário (VACUUM INTO, rotação de 10, fora do git) + integrity_check
@@ -198,6 +199,9 @@ async function watchdog() {
     else if (rssMB > 1100) issues.push(`memória alta (${rssMB}MB)`);
     if (issues.length) console.warn(`[watchdog] atenção: ${issues.join(" · ")}`);
     else console.log(`[watchdog] ok — banco ${dbMs}ms, pool ${works} obras, rss ${rssMB}MB`);
+    // v3.9.4 — rastro em disco: se a instância morrer, o último watchdog conta a
+    // história (rss subindo? banco lento? pool vazio?) sem depender dos logs da plataforma
+    flight("watchdog", { rssMB, pool: works, dbMs, issues: issues.length });
     // cura ativa: banco responde rápido + pool vazio/quase vazio → reconstrói agora
     // (v3.7.4: <500 em vez de ===0 — boot frio pós-restore começa com poucas obras
     // e ficava "saudável" com catálogo ralo; 40k obras é o estado legítimo deste site)

@@ -12,13 +12,20 @@ export async function GET() {
   const started = Date.now();
   const checks: Record<string, any> = {};
 
-  // banco
+  // banco — com guarda de tempo (v3.9.3): um banco inalcançável não pode pendurar
+  // o health check da plataforma (connect pendurado → container morto por timeout).
+  // O erro aparece AQUI, legível de fora — diagnóstico remoto sem acesso aos logs.
+  const t0 = Date.now();
   try {
-    const t0 = Date.now();
-    await db.$queryRawUnsafe("SELECT 1");
+    await Promise.race([
+      db.$queryRawUnsafe("SELECT 1"),
+      new Promise((_, rej) =>
+        setTimeout(() => rej(new Error("timeout 4s — banco não respondeu (rede de saída ou credenciais)")), 4000)
+      ),
+    ]);
     checks.database = { ok: true, ms: Date.now() - t0 };
   } catch (e: any) {
-    checks.database = { ok: false, error: String(e?.message ?? e).slice(0, 120) };
+    checks.database = { ok: false, ms: Date.now() - t0, error: String(e?.message ?? e).slice(0, 160) };
   }
 
   // pool de obras (cache quente = site navegável mesmo com banco sob pressão)

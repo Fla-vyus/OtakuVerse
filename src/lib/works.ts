@@ -1,5 +1,5 @@
 // Servidor: acesso ao banco de obras (cache em memória) + filtros + similaridade
-import { db } from "@/lib/db";
+import { db, isLibsqlMode } from "@/lib/db";
 import { parseWork, type WorkData, type Classification } from "@/lib/types";
 
 // v3.8 — serverless (Vercel): o pool inicial pode ser hidratado do snapshot
@@ -8,6 +8,47 @@ import { parseWork, type WorkData, type Classification } from "@/lib/types";
 // start (20-60s + pico de rede). O snapshot é do momento do deploy; o TTL de
 // 15 min revalida contra o Turso (dados frescos) em background logo depois.
 const IS_SERVERLESS = process.env.VERCEL === "1";
+
+// v3.9.3 — POOL ADAPTATIVO. A plataforma de publicação roda o app num container
+// com limite de memória MENOR que o do sandbox (o bun bateu 1165MB de pico com o
+// pool cheio e o container foi morto → 502 em tudo). Estratégia: detectar o
+// limite do cgroup e cap o pool por popularidade (o topo é o que o público
+// navega/busca; obras fora do cap continuam acessíveis via /obra/[id], que
+// sempre consultou o banco direto). OTAKUVERSE_POOL_MAX (env/runtime json)
+// vence a detecção — botão de ajuste fino sem rebuild.
+const FULL_POOL_ESTIMATE = 40456; // obras no catálogo público+adulto
+const ADULT_POOL_CAP = 2500;     // zona adulta sempre representada no cap
+let __poolMax: number | undefined; // undefined = ainda não avaliado
+async function resolvePoolMax(): Promise<number> {
+  if (__poolMax !== undefined) return __poolMax;
+  const envMax = Number(process.env.OTAKUVERSE_POOL_MAX ?? 0);
+  if (envMax > 0) {
+    __poolMax = Math.floor(envMax);
+    console.log(`[pool] OTAKUVERSE_POOL_MAX=${__poolMax} (env) — pool por popularidade`);
+    return __poolMax;
+  }
+  if (IS_SERVERLESS) { __poolMax = 0; return __poolMax; } // Vercel: comportamento inalterado
+  try {
+    // cgroups v2 (memory.max: número ou "max") e v1 (limit_in_bytes)
+    const { readFileSync } = await import("node:fs");
+    for (const p of ["/sys/fs/cgroup/memory.max", "/sys/fs/cgroup/memory/memory.limit_in_bytes"]) {
+      try {
+        const raw = readFileSync(p, "utf8").trim();
+        const bytes = raw === "max" ? 0 : Number(raw);
+        // sem limite: "max" (v2) ou número absurdo >1TB (v1) → pool cheio
+        if (bytes > 0 && bytes < 1e12) {
+          // pool pode usar ~45% do limite; ~17KB de JS por obra no pool
+          __poolMax = Math.max(4000, Math.min(FULL_POOL_ESTIMATE, Math.floor((bytes * 0.45) / 17_000)));
+          console.log(`[pool] limite de memória ${Math.round(bytes / 1048576)}MB → POOL_MAX=${__poolMax}`);
+          return __poolMax;
+        }
+      } catch { /* arquivo não existe neste container */ }
+    }
+  } catch { /* fs indisponível (bundling cliente) — nunca deve chegar aqui */ }
+  __poolMax = 0;
+  console.log("[pool] sem limite de memória detectado — pool cheio");
+  return __poolMax;
+}
 
 // ---------- Cache em memória (evita reler 10k+ rows do SQLite a cada request) ----------
 interface Cache {
@@ -96,7 +137,31 @@ function finalizePool(rows: Record<string, unknown>[], maxUpdatedAt: number): Ca
 async function buildCache(): Promise<Cache> {
   const agg = await db.work.aggregate({ _max: { createdAt: true } });
   const maxUpdatedAt = agg._max.createdAt?.getTime() ?? 0;
-  const rows = await db.work.findMany({ select: POOL_SELECT });
+  // v3.9.3: cap por popularidade quando há limite de memória (container da plataforma).
+  // Duas fatias para as duas zonas de leitura: topo público + adultos (2500) —
+  // o filtro por leitura continua igual (público exclui adult/drama na saída).
+  const max = await resolvePoolMax();
+  let rows: Record<string, unknown>[];
+  if (!max || max >= FULL_POOL_ESTIMATE) {
+    rows = await db.work.findMany({ select: POOL_SELECT });
+  } else {
+    const [head, adults] = await Promise.all([
+      db.work.findMany({
+        select: POOL_SELECT,
+        where: { type: { not: "drama" }, classification: { not: "adult" } },
+        orderBy: [{ popularity: "desc" }],
+        take: max,
+      }),
+      db.work.findMany({
+        select: POOL_SELECT,
+        where: { classification: "adult" },
+        orderBy: [{ popularity: "desc" }],
+        take: ADULT_POOL_CAP,
+      }),
+    ]);
+    console.log(`[pool] cap ativo: ${head.length} públicas + ${adults.length} adultas (POOL_MAX=${max})`);
+    rows = [...head, ...adults];
+  }
   return finalizePool(rows, maxUpdatedAt);
 }
 
@@ -120,10 +185,37 @@ async function hydrateFromSnapshot(): Promise<Cache | null> {
     }
     if (!gz) return null;
     const t0 = Date.now();
-    const lines = gunzipSync(gz).toString("utf8").split("\n").filter((l) => l.trim());
+    // v3.9.3c: ciclo de vida explícito dos transientes (big string + array de linhas).
+    // Em container apertado, o transiente do gunzip+split (~180MB) junto com o parse
+    // de tudo era OOM na certa — liberar ANTES do parse e forçar GC derruba o pico.
+    let big = gunzipSync(gz).toString("utf8");
+    gz = undefined; // solta o buffer comprimido (21MB)
+    let lines = big.split("\n").filter((l) => l.trim());
+    big = ""; // a string grande (~90MB) vira lixo — as linhas já foram copiadas pelo split
     if (lines.length < 1000) return null; // snapshot degenerado → banco
-    const rows = lines.map((l) => JSON.parse(l));
-    const cache = finalizePool(rows, 0);
+    // v3.9.3b: hidratação FRUGAL quando há cap. Popularidade/type/classification
+    // extraídos por REGEX das strings cruas, ordenação das LINHAS e parse apenas
+    // do topo (as demais linhas viram lixo ANTES do parse, não depois).
+    const cap = await resolvePoolMax();
+    let linesToParse: string[] = lines;
+    if (cap && cap < FULL_POOL_ESTIMATE) {
+      const scored: { pop: number; i: number; adult: boolean }[] = [];
+      for (let i = 0; i < lines.length; i++) {
+        const l = lines[i];
+        if (l.includes('"type":"drama"')) continue; // dramas fora do pool (dados inativos)
+        const adult = l.includes('"classification":"adult"');
+        const m = /"popularity":(\d+)/.exec(l);
+        scored.push({ pop: m ? Number(m[1]) : 0, i, adult });
+      }
+      const pub = scored.filter((s) => !s.adult).sort((a, b) => b.pop - a.pop).slice(0, cap);
+      const adu = scored.filter((s) => s.adult).sort((a, b) => b.pop - a.pop).slice(0, ADULT_POOL_CAP);
+      linesToParse = [...pub, ...adu].map((s) => lines[s.i]);
+    }
+    lines = []; // as ~31k linhas não selecionadas viram lixo AGORA (antes do parse)
+    const rowsLocal = linesToParse.map((l) => JSON.parse(l));
+    // dica de GC no bun (o pico de RSS era lixo pendente do split + parse)
+    (globalThis as unknown as { Bun?: { gc?: (sync: boolean) => void } }).Bun?.gc?.(true);
+    const cache = finalizePool(rowsLocal, 0);
     console.log(`[pool] hidratado do snapshot: ${cache.works.length} obras em ${Date.now() - t0}ms (cold start sem tocar no banco)`);
     return cache;
   } catch (e) {
@@ -137,9 +229,11 @@ async function hydrateFromSnapshot(): Promise<Cache | null> {
 function rebuildCache(): Promise<Cache> {
   if (g.__ovCacheBuilding) return g.__ovCacheBuilding;
   // v3.8: cold boot na Vercel → tenta o snapshot (instantâneo) antes do banco.
+  // v3.9.3: na PLATAFORMA (container com banco remoto) também — puxar 40k rows
+  // via Turso no primeiro acesso demorou 11,3s e foi o gatilho do OOM/death.
   // Rebuilds seguintes (TTL/invalidação) vão DIRETO ao banco — dados frescos.
   const coldBoot = !g.__ovCache && !g.__ovCacheStale;
-  const p = (IS_SERVERLESS && coldBoot ? hydrateFromSnapshot() : Promise.resolve(null))
+  const p = ((IS_SERVERLESS || isLibsqlMode) && coldBoot ? hydrateFromSnapshot() : Promise.resolve(null))
     .then((snap) => snap ?? buildCache())
     .then((cache) => {
       g.__ovCache = cache;

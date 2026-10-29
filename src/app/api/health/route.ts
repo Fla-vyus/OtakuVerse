@@ -2,6 +2,7 @@
 // Retorna rápido e SEMPRE 200 com o estado de cada componente (nunca derruba o monitor).
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { isRemoteDb } from "@/lib/runtime-env";
 import { peekStaleCache } from "@/lib/works";
 import { existsSync } from "node:fs";
 
@@ -24,12 +25,21 @@ export async function GET() {
   const pool = peekStaleCache();
   checks.worksCache = { ok: (pool?.works.length ?? 0) > 0, size: pool?.works.length ?? 0 };
 
-  // durabilidade em disco
+  // durabilidade
+  // v3.9.1: em modo libsql (Turso) os jobs de disco ficam DESLIGADOS de propósito —
+  // backup/PITR/snapshot são responsabilidade do Turso Cloud. Reportar ok:false aqui
+  // era falso positivo e colocava o keepalive em loop de reinício (health 200 com
+  // "ok":false em qualquer check → 4 checagens → restart a cada ~2min).
   try {
-    const hasBackup = existsSync(process.cwd() + "/db/backups");
-    const hasSnapshot = existsSync(process.cwd() + "/data/catalog-snapshot.jsonl.gz");
-    const hasVault = existsSync("/home/z/otakuverse-vault/latest/manifesto.json");
-    checks.durability = { ok: hasBackup && hasSnapshot, backup: hasBackup, snapshotGitSafe: hasSnapshot, vaultExterno: hasVault };
+    if (isRemoteDb) {
+      const hasSnapshot = existsSync(process.cwd() + "/data/catalog-snapshot.jsonl.gz");
+      checks.durability = { ok: true, modo: "turso-cloud", backupLocal: false, snapshotGitSafe: hasSnapshot };
+    } else {
+      const hasBackup = existsSync(process.cwd() + "/db/backups");
+      const hasSnapshot = existsSync(process.cwd() + "/data/catalog-snapshot.jsonl.gz");
+      const hasVault = existsSync("/home/z/otakuverse-vault/latest/manifesto.json");
+      checks.durability = { ok: hasBackup && hasSnapshot, backup: hasBackup, snapshotGitSafe: hasSnapshot, vaultExterno: hasVault };
+    }
   } catch {
     checks.durability = { ok: false };
   }

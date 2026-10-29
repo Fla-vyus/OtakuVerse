@@ -254,6 +254,14 @@ async function warmUpRoutes() {
 }
 
 export function startBackgroundJobs() {
+  // v3.8 — SERVERLESS (Vercel): nada de processos de fundo. setInterval/setTimeout
+  // morrem junto com a instância e os filhos node (backup/vault/snapshot) nem
+  // existem num filesystem read-only. O ciclo de vida lá é:
+  //   · backup do banco      → Turso Cloud (backups gerenciados, point-in-time)
+  //   · snapshot/vault/git   → não aplicável (o estado vive no Turso, não no disco)
+  //   · refresh do catálogo  → Vercel Cron HTTP (vercel.json) → /api/cron/tick
+  //   · restore automático   → não aplicável (Turso é persistente por natureza)
+  if (process.env.VERCEL === "1") return;
   if (g.__ovJobsStarted) return;
   g.__ovJobsStarted = true;
 

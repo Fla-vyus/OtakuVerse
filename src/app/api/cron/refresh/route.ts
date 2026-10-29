@@ -81,8 +81,13 @@ export async function doRefresh(): Promise<{ refreshed: number; expanded: number
 export async function GET(req: NextRequest) {
   // TRANCADO: exige chave (definida no .env como CRON_KEY). A chamada interna do
   // instrumentation.ts usa doRefresh() direto e não passa por aqui.
-  const key = req.nextUrl.searchParams.get("key");
-  if (!process.env.CRON_KEY || key !== process.env.CRON_KEY) {
+  // v3.8 — aceita query (?key=) OU Authorization: Bearer (Vercel Cron).
+  const key =
+    req.nextUrl.searchParams.get("key") ??
+    req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ??
+    "";
+  const expected = process.env.CRON_KEY ?? process.env.CRON_SECRET;
+  if (!expected || key !== expected) {
     return NextResponse.json({ ok: false, error: "Chave inválida" }, { status: 403 });
   }
   const res = await doRefresh();

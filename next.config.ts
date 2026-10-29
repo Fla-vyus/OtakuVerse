@@ -8,6 +8,13 @@ const nextConfig: NextConfig = {
   reactStrictMode: false,
   compress: true,
   poweredByHeader: false,
+  // v3.8 — Vercel: o snapshot do catálogo entra no bundle de TODAS as funções.
+  // É ele que permite o cold start hidratar o pool de 40k obras em segundos,
+  // sem precisar puxar tudo do Turso na primeira requisição (~21MB gz por função,
+  // folga no limite de 250MB do bundle).
+  outputFileTracingIncludes: {
+    "/**": ["./data/catalog-snapshot.jsonl.gz", "./data/manifest.json"],
+  },
   // Turbopack guarda artefatos de compilação em disco: reiniciar o servidor dev
   // não recomeça do zero — primeira abertura de cada rota continua rápida.
   experimental: {

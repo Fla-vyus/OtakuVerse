@@ -1,5 +1,6 @@
 import { createHash } from "crypto";
 import { promises as fs } from "fs";
+import os from "os";
 import path from "path";
 
 /**
@@ -29,14 +30,23 @@ const ALLOWED_HOSTS = new Set([
   "images.mangaupdates.com", // MangaUpdates — capas editoriais reais (fonte #6)
 ]);
 
-const CACHE_DIR = path.join(process.cwd(), "db", "imgcache");
+// v3.8 — serverless (Vercel): o filesystem é read-only exceto /tmp, que é
+// EFÊMERO por instância. O cache continua valendo (protege contra rate limit
+// dos CDNs dentro da vida da instância e serve bytes já baixados), mas o teto
+// é menor e a pasta fica em /tmp. Local/sandbox: comportamento antigo intacto.
+const IS_SERVERLESS = process.env.VERCEL === "1" || !!process.env.AWS_LAMBDA_FUNCTION_NAME;
+const CACHE_DIR = IS_SERVERLESS
+  ? path.join(os.tmpdir(), "otakuverse-imgcache")
+  : path.join(process.cwd(), "db", "imgcache");
 const MAX_BYTES = 8 * 1024 * 1024;
 const DOWNLOAD_TIMEOUT = 12_000;
 const MAX_CONCURRENCY = 6; // respeita rate limits dos CDNs
 // Teto do acervo em disco — quando passa, os arquivos mais antigos são podados
 // (auto-cura: qualquer imagem podada volta a ser baixada do CDN se precisar).
 // Sem isso o disco enche e o SITE INTEIRO fica instável — estabilidade > acervo total.
-const MAX_CACHE_BYTES = 4 * 1024 * 1024 * 1024; // 4 GB
+const MAX_CACHE_BYTES = IS_SERVERLESS
+  ? 512 * 1024 * 1024 // 512MB no /tmp da Vercel (efêmero, por instância)
+  : 4 * 1024 * 1024 * 1024; // 4 GB
 const EVICT_CHECK_EVERY = 150; // checa o tamanho a cada 150 downloads
 
 const EXT_BY_CT: Record<string, string> = {

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import ZAI from "z-ai-web-dev-sdk";
+import { createAoi } from "@/lib/ai";
 import { getWorkById, getAllWorks, computeRelated } from "@/lib/works";
 import { db } from "@/lib/db";
 import { TYPE_LABEL, STATUS_LABEL, fmtDate, fmtNum, type WorkData } from "@/lib/types";
@@ -59,7 +59,7 @@ Produza EXATAMENTE este markdown (sem bloco de código, sem título grande no to
 
 🎯 **Nota curadora:** X/10 — 1 frase justificando.`;
 
-    const zai = await ZAI.create();
+    const zai = await createAoi();
     const completion = await zai.chat.completions.create({
       messages: [
         { role: "assistant", content: "Você é a Aoi, curadora do OtakuVerse. Responda em PT-BR. Siga exatamente a estrutura pedida, em markdown, sem blocos de código. Seja específica sobre A OBRA dada, nunca genérica." },

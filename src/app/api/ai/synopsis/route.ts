@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import ZAI from "z-ai-web-dev-sdk";
+import { createAoi } from "@/lib/ai";
 import { getWorkById } from "@/lib/works";
 import { db } from "@/lib/db";
 
@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
     if (work.synopsisPT) return NextResponse.json({ ok: true, synopsisPT: work.synopsisPT, cached: true });
     if (!work.synopsis) return NextResponse.json({ ok: true, synopsisPT: null, cached: false });
 
-    const zai = await ZAI.create();
+    const zai = await createAoi();
     const t = await zai.chat.completions.create({
       messages: [
         { role: "assistant", content: "Traduza e adapte a sinopse a seguir para português do Brasil natural e atraente, em 2-4 frases. Responda APENAS com a sinopse traduzida, sem comentários nem aspas." },

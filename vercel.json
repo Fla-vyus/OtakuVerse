@@ -1,0 +1,18 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "regions": ["gru1"],
+  "crons": [
+    {
+      "path": "/api/cron/tick",
+      "schedule": "0 9 * * *"
+    }
+  ],
+  "functions": {
+    "src/app/api/**/route.ts": {
+      "memory": 1792
+    },
+    "src/app/**/page.tsx": {
+      "memory": 1792
+    }
+  }
+}

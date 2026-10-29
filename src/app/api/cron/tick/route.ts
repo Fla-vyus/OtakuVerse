@@ -15,8 +15,14 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 export async function GET(req: NextRequest) {
-  const key = req.nextUrl.searchParams.get("key");
-  if (!process.env.CRON_KEY || key !== process.env.CRON_KEY) {
+  // v3.8 — aceita chave por query (?key=, daemon local) OU header
+  // Authorization: Bearer (Vercel Cron injeta CRON_SECRET automaticamente).
+  const key =
+    req.nextUrl.searchParams.get("key") ??
+    req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ??
+    "";
+  const expected = process.env.CRON_KEY ?? process.env.CRON_SECRET;
+  if (!expected || key !== expected) {
     return NextResponse.json({ ok: false, error: "Chave inválida" }, { status: 403 });
   }
   const at = Date.now();

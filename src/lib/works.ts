@@ -2,6 +2,13 @@
 import { db } from "@/lib/db";
 import { parseWork, type WorkData, type Classification } from "@/lib/types";
 
+// v3.8 — serverless (Vercel): o pool inicial pode ser hidratado do snapshot
+// git-safe (data/catalog-snapshot.jsonl.gz, incluído no bundle via
+// outputFileTracingIncludes) em ~3-6s — em vez de 40k rows via Turso no cold
+// start (20-60s + pico de rede). O snapshot é do momento do deploy; o TTL de
+// 15 min revalida contra o Turso (dados frescos) em background logo depois.
+const IS_SERVERLESS = process.env.VERCEL === "1";
+
 // ---------- Cache em memória (evita reler 10k+ rows do SQLite a cada request) ----------
 interface Cache {
   works: WorkData[];
@@ -50,10 +57,8 @@ const POOL_TAG_CAP = 15; // top-15 por rank no pool — economia real de memóri
 export const TAG_INDEX_MIN_RANK = 40;
 const TAG_INDEX_MIN_COUNT = 40; // nome precisa ter >=40 obras pra valer índice (memória)
 
-async function buildCache(): Promise<Cache> {
-  const agg = await db.work.aggregate({ _max: { createdAt: true } });
-  const maxUpdatedAt = agg._max.createdAt?.getTime() ?? 0;
-  const rows = await db.work.findMany({ select: POOL_SELECT });
+/** Processa rows do banco/snapshot → Cache completo (2 passadas de tags + índice). */
+function finalizePool(rows: Record<string, unknown>[], maxUpdatedAt: number): Cache {
   // 1ª passada: obras parseadas (tags completas) + contagem global de tags relevantes
   const works: WorkData[] = [];
   const tagCount = new Map<string, number>();
@@ -88,11 +93,54 @@ async function buildCache(): Promise<Cache> {
   return { works, builtAt: Date.now(), maxUpdatedAt, tagIndex };
 }
 
+async function buildCache(): Promise<Cache> {
+  const agg = await db.work.aggregate({ _max: { createdAt: true } });
+  const maxUpdatedAt = agg._max.createdAt?.getTime() ?? 0;
+  const rows = await db.work.findMany({ select: POOL_SELECT });
+  return finalizePool(rows, maxUpdatedAt);
+}
+
+/** Hidrata o pool do snapshot git-safe (só Vercel, só cold boot). Snapshot contém
+ *  rows COMPLETOS do Prisma (JSONL, 1 linha/obra) — superset do POOL_SELECT.
+ *  Qualquer falha → null (pool vem do banco, comportamento antigo). */
+async function hydrateFromSnapshot(): Promise<Cache | null> {
+  try {
+    const { readFileSync, existsSync } = await import("node:fs");
+    const { gunzipSync } = await import("node:zlib");
+    const path = await import("node:path");
+    // standalone aponta cwd para .next/standalone — o tracing inclui ./data no
+    // cwd da função; o ../data cobre o caso de execução fora do standalone.
+    const candidates = [
+      path.default.join(process.cwd(), "data", "catalog-snapshot.jsonl.gz"),
+      path.default.join(process.cwd(), "..", "data", "catalog-snapshot.jsonl.gz"),
+    ];
+    let gz: Buffer | undefined;
+    for (const p of candidates) {
+      if (existsSync(p)) { gz = readFileSync(p); break; }
+    }
+    if (!gz) return null;
+    const t0 = Date.now();
+    const lines = gunzipSync(gz).toString("utf8").split("\n").filter((l) => l.trim());
+    if (lines.length < 1000) return null; // snapshot degenerado → banco
+    const rows = lines.map((l) => JSON.parse(l));
+    const cache = finalizePool(rows, 0);
+    console.log(`[pool] hidratado do snapshot: ${cache.works.length} obras em ${Date.now() - t0}ms (cold start sem tocar no banco)`);
+    return cache;
+  } catch (e) {
+    console.warn("[pool] snapshot indisponível — pool virá do banco:", (e as Error).message);
+    return null;
+  }
+}
+
 /** Rebuild com single-flight: se já há um build em andamento, todo mundo espera o MESMO promise
  *  (antes: N requisições concorrentes geravam N leituras de 24k rows — stampede que travava o SQLite). */
 function rebuildCache(): Promise<Cache> {
   if (g.__ovCacheBuilding) return g.__ovCacheBuilding;
-  const p = buildCache()
+  // v3.8: cold boot na Vercel → tenta o snapshot (instantâneo) antes do banco.
+  // Rebuilds seguintes (TTL/invalidação) vão DIRETO ao banco — dados frescos.
+  const coldBoot = !g.__ovCache && !g.__ovCacheStale;
+  const p = (IS_SERVERLESS && coldBoot ? hydrateFromSnapshot() : Promise.resolve(null))
+    .then((snap) => snap ?? buildCache())
     .then((cache) => {
       g.__ovCache = cache;
       return cache;

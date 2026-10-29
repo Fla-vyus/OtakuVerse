@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import ZAI from "z-ai-web-dev-sdk";
+import { createAoi } from "@/lib/ai";
 import { getWorkById } from "@/lib/works";
 import { TYPE_LABEL, type WorkData } from "@/lib/types";
 import type { TasteProfile } from "@/components/portal/personal";
@@ -81,7 +81,7 @@ REGRAS:
 
 Os marcadores [#{id}] devem usar EXATAMENTE o id numérico dado. Não invente obras fora da lista.`;
 
-    const zai = await ZAI.create();
+    const zai = await createAoi();
     const completion = await zai.chat.completions.create({
       messages: [
         { role: "system", content: "Você é a Aoi, curadora IA do OtakuVerse. Responda sempre em português do Brasil, com opiniões francas e conhecimento real de cultura otaku. Siga EXATAMENTE o formato pedido." },

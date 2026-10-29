@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import ZAI from "z-ai-web-dev-sdk";
+import { createAoi } from "@/lib/ai";
 import { getAllWorks } from "@/lib/works";
 import { db } from "@/lib/db";
 import { rateLimit } from "@/lib/auth";
@@ -141,7 +141,7 @@ export async function POST(req: NextRequest) {
     const { getSessionUser } = await import("@/lib/auth");
     const sessUser = await getSessionUser();
 
-    const zai = await ZAI.create();
+    const zai = await createAoi();
     const completion = await zai.chat.completions.create({
       messages: [
         { role: "assistant", content: systemPrompt(sessUser?.displayName ?? undefined, !!sessUser?.adultMode) },

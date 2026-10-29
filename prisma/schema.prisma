@@ -1,5 +1,8 @@
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  // driverAdapters: permite o PrismaLibSQL (@prisma/adapter-libsql) — mesmo schema
+  // SQLite funciona local (file:) e em produção serverless (libsql:// Turso).
+  previewFeatures = ["driverAdapters"]
 }
 
 datasource db {

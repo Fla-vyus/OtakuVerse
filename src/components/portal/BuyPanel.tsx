@@ -30,7 +30,9 @@ export default function BuyPanel({ work }: { work: WorkData }) {
   const blocked = work.classification === "adult" || work.type === "drama";
 
   useEffect(() => {
-    setRegion(getRegionOverride() ?? detectRegion());
+    // defer 1 tick: detecção de região toca localStorage/navegador — evita setState síncrono no effect
+    const t = setTimeout(() => setRegion(getRegionOverride() ?? detectRegion()), 0);
+    return () => clearTimeout(t);
   }, []);
 
   const links = useMemo(() => {

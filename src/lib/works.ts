@@ -239,11 +239,17 @@ export function classify(m: { isAdult?: boolean; format?: string | null; tags?: 
   // fix-ecchi-genre.ts (sem ela, Kuzu no Honkai/We Never Learn etc. ficavam "safe"
   // e sumiam do filtro Ecchi/Sensorial enquanto obras com cenas pontuais entravam)
   if ((m.genres ?? []).includes("Ecchi")) return { classification: "suggestive", adultTags: "[]", spicy: 1 };
+  // v3.8: inferência por tags SÓ com intensidade ALTA (rank 0-100 da AniList).
+  // Antes (30/40/50) arrastava obras com cenas pontuais/fan service leve — Chainsaw
+  // Man, Berserk, Evangelion, Vinland Saga e Code Geass apareciam como "Ecchi" e
+  // isso derrubava a confiança no filtro. Erro agora é para o lado seguro: só
+  // conteúdo genuinamente picante (tags dominantes da obra) vira suggestive.
   const tagRanks = new Map((m.tags ?? []).map((t) => [t.name, t.rank]));
   const ecchi = tagRanks.get("Ecchi") ?? 0;
   const nudity = tagRanks.get("Nudity") ?? 0;
-  const sensual = tagRanks.get("Succubus") ?? 0;
-  if (ecchi >= 30 || nudity >= 40 || sensual >= 50) return { classification: "suggestive", adultTags: "[]", spicy: 1 };
+  const sexual = tagRanks.get("Sexual Content") ?? 0;
+  const sensual = Math.max(tagRanks.get("Succubus") ?? 0, sexual);
+  if (ecchi >= 75 || nudity >= 70 || sensual >= 70) return { classification: "suggestive", adultTags: "[]", spicy: 1 };
   return { classification: "safe", adultTags: "[]", spicy: 0 };
 }
 

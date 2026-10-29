@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Send, Loader2, User as UserIcon, Eraser, Heart } from "lucide-react";
+import { Send, Loader2, User as UserIcon, Eraser, Heart, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
@@ -92,6 +92,9 @@ export function AssistantView() {
             </p>
             <p className="flex items-center gap-1 text-[11px] text-muted-foreground">
               online agora · recomendações 100% do catálogo real
+            </p>
+            <p className="mt-0.5 flex items-center gap-1 text-[10px] text-muted-foreground/80">
+              <Sparkles className="h-3 w-3" /> Aoi é inteligência artificial e pode errar — confira as notas e datas nas fontes oficiais
             </p>
           </div>
         </div>

@@ -58,8 +58,9 @@ export function SalesView() {
             <TrendingUp className="h-6 w-6 text-primary" /> Vendas de Mangá
           </h1>
           <p className="mt-0.5 max-w-2xl text-xs text-muted-foreground">
-            Rankings reais de vendas: volumes individuais e séries mais vendidas do ano (dados públicos da Oricon)
-            e os acumulados históricos divulgados pelas editoras. Capas do catálogo real.
+            Vendas compiladas de relatórios públicos da Oricon e das editoras — exibimos os anos já publicados
+            pela fonte (as edições mais recentes entram assim que saem). Capas do catálogo; datas e números
+            pertencem aos relatórios originais.
           </p>
         </div>
       </div>
@@ -133,7 +134,7 @@ export function SalesView() {
               >
                 <img
                   src={`/api/img?u=${encodeURIComponent(it.cover)}`}
-                  alt=""
+                  alt={`Capa de ${it.title}`}
                   loading="lazy"
                   decoding="async"
                   referrerPolicy="no-referrer"

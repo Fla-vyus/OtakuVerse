@@ -107,7 +107,7 @@ export function CalendarView() {
                       <button key={w.id} onClick={() => openWork(w.id)} className="flex items-center gap-2 rounded-xl bg-secondary/70 px-2.5 py-2 text-left transition hover:bg-accent">
                         <div className="h-11 w-8 shrink-0 overflow-hidden rounded-md" style={{ background: w.coverColor ? `${w.coverColor}33` : "var(--muted)" }}>
                           {w.cover ? (
-                            <img src={`/api/img?u=${encodeURIComponent(w.cover)}`} alt="" loading="lazy" referrerPolicy="no-referrer" className="h-full w-full object-cover" />
+                            <img src={`/api/img?u=${encodeURIComponent(w.cover)}`} alt={`Capa de ${w.title}`} loading="lazy" referrerPolicy="no-referrer" className="h-full w-full object-cover" />
                           ) : (
                             <div className="flex h-full w-full items-center justify-center text-[8px] font-black text-muted-foreground">{w.title.slice(0, 2).toUpperCase()}</div>
                           )}
@@ -133,7 +133,7 @@ export function CalendarView() {
 
       {/* semana: capítulos */}
       <section>
-        <p className="mb-3 flex items-center gap-2 text-sm font-black"><BookOpen className="h-4 w-4 text-primary" /> Esta semana — lançamentos de capítulos <span className="text-[10px] font-semibold text-muted-foreground">(estimativa semanal das séries ativas)</span></p>
+        <p className="mb-3 flex items-center gap-2 text-sm font-black"><BookOpen className="h-4 w-4 text-primary" /> Esta semana — lançamentos de capítulos <span className="text-[10px] font-semibold text-muted-foreground">(datas estimadas pelo padrão de publicação — não são anúncios oficiais; confirme na fonte)</span></p>
         {loading ? (
           <div className="py-8 text-center"><Loader2 className="mx-auto h-6 w-6 animate-spin text-primary" /></div>
         ) : (
@@ -150,7 +150,7 @@ export function CalendarView() {
                     <button key={c.workId} onClick={() => openWork(c.workId)} className="flex items-center gap-2 rounded-xl bg-secondary/70 px-2.5 py-2 text-left transition hover:bg-accent">
                       <div className="h-11 w-8 shrink-0 overflow-hidden rounded-md" style={{ background: c.coverColor ? `${c.coverColor}33` : "var(--muted)" }}>
                         {c.cover ? (
-                          <img src={`/api/img?u=${encodeURIComponent(c.cover)}`} alt="" loading="lazy" referrerPolicy="no-referrer" className="h-full w-full object-cover" />
+                          <img src={`/api/img?u=${encodeURIComponent(c.cover)}`} alt={`Capa de ${c.title}`} loading="lazy" referrerPolicy="no-referrer" className="h-full w-full object-cover" />
                         ) : (
                           <div className="flex h-full w-full items-center justify-center text-[8px] font-black text-muted-foreground">{c.title.slice(0, 2).toUpperCase()}</div>
                         )}

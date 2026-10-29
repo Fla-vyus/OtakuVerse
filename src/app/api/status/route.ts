@@ -37,14 +37,17 @@ export async function GET() {
     return NextResponse.json({ ok: true, ...g.__statusCache.data });
   }
   try {
-    const [total, lastCron, users, syncMeta] = await Promise.all([
+    const [total, publicTotal, lastCron, users, syncMeta] = await Promise.all([
       db.work.count({ where: { type: { not: "drama" } } }),
+      db.work.count({ where: { type: { not: "drama" }, isAdult: false } }),
       db.eventLog.findFirst({ where: { kind: "cron_refresh" }, orderBy: { at: "desc" } }),
       db.user.count().catch(() => 0),
       db.syncMeta.findUnique({ where: { id: "anilist" } }).catch(() => null),
     ]);
     const data = {
       total,
+      // público = catálogo navegável sem login (zona +18 não conta — coerente com home/Aoi)
+      publicTotal,
       lastRefreshAt: lastCron?.at?.toISOString() ?? null,
       // durabilidade
       users,

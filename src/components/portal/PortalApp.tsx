@@ -205,7 +205,7 @@ export function PortalApp() {
   const setHypeMode = usePortal((s) => s.setHypeMode);
   const setLibrary = usePortal((s) => s.setLibrary);
   const [search, setSearch] = useState("");
-  const [status, setStatus] = useState<{ total: number | null; lastRefreshAt: string | null } | null>(null);
+  const [status, setStatus] = useState<{ total: number | null; publicTotal?: number | null; lastRefreshAt: string | null } | null>(null);
   const [canInstall, setCanInstall] = useState(false);
 
   useEffect(() => {
@@ -307,20 +307,8 @@ export function PortalApp() {
             <UserMenu />
           </div>
         </div>
-        {/* nav secundária mobile */}
-        <nav className="no-scrollbar flex gap-1 overflow-x-auto border-t border-border px-3 py-1.5 lg:hidden" aria-label="Navegação mobile superior">
-          {NAV.map((n) => (
-            <button
-              key={n.view}
-              onClick={() => go(n.view)}
-              className={`flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition ${
-                view === n.view ? "bg-primary/10 text-primary ring-1 ring-primary/25" : "text-muted-foreground"
-              }`}
-            >
-              {n.icon} {n.label}
-            </button>
-          ))}
-        </nav>
+        {/* nav secundária mobile: REMOVIDA — era redundante com a nav inferior (duas barras com
+            menus iguais ao mesmo tempo confundiam; a bottom nav é o padrão de app) */}
       </header>
 
       {/* Conteúdo */}
@@ -388,7 +376,7 @@ export function PortalApp() {
               {status && (
                 <p className="mt-1.5 flex items-center gap-1.5 font-semibold">
                   <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" />
-                  Catálogo: {status.total != null ? status.total.toLocaleString("pt-BR") : "..."} obras · atualização automática ativa{status.lastRefreshAt ? ` · última varredura ${new Date(status.lastRefreshAt).toLocaleString("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}` : ""}
+                  Catálogo: {(status.publicTotal ?? status.total ?? 0).toLocaleString("pt-BR")} obras · atualização automática ativa{status.lastRefreshAt ? ` · última varredura ${new Date(status.lastRefreshAt).toLocaleString("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}` : ""}
                 </p>
               )}
             </div>

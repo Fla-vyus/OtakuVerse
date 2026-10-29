@@ -1,53 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, Flame, Star, Sparkles, Trophy, Rocket, CalendarDays, Newspaper, Gauge, Layers, BookOpen, Clock, TrendingUp, BookMarked, Check, Globe } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ChevronLeft, ChevronRight, Flame, Star, Sparkles, Trophy, Rocket, CalendarDays, Gauge } from "lucide-react";
 import { usePortal, HYPE_MODES } from "./store";
 import { CardRow, WorkCard, CardSkeleton } from "./WorkCard";
 import AdSlot from "./AdSlot";
 import { fetchJSON } from "@/lib/fetchClient";
 import type { WorkData } from "@/lib/types";
-
-interface NewsItem {
-  id: string; kind: string; title: string; summary: string; body?: string;
-  image: string | null; date: string; workId: string | null; badge: string; source?: string;
-}
-
-interface ChapterRelease {
-  work: WorkData;
-  nextChapter: number | null;
-  dateISO: string;
-  weekday: string;
-  stale: boolean;
-}
-
-interface SaleItem {
-  series: string;
-  volume?: number;
-  year: number;
-  copies: number;
-  note?: string;
-  workId: string;
-  cover: string;
-  coverColor?: string | null;
-  title: string;
-  type: string;
-}
-
-interface MagEntry {
-  name: string;
-  publisher: string | null;
-  demographic: string | null;
-  schedule: string | null;
-  count: number;
-  covers: { id: string; title: string; cover: string; coverColor: string | null }[];
-}
-
-function fmtCopies(n: number): string {
-  if (n >= 1_000_000) return (n / 1_000_000).toFixed(2).replace(/\.?0+$/, "") + " mi";
-  if (n >= 1000) return Math.round(n / 1000) + " mil";
-  return String(n);
-}
 
 function SectionHeader({ icon, title, sub, action }: { icon: React.ReactNode; title: string; sub: string; action?: React.ReactNode }) {
   return (
@@ -209,139 +168,7 @@ function HypeCarousel() {
   );
 }
 
-function NewsTeaser({ news }: { news: NewsItem[] }) {
-  const openWork = usePortal((s) => s.openWork);
-  const go = usePortal((s) => s.go);
-  if (!news?.length) return null;
-  return (
-    <section className="cv-auto">
-      <SectionHeader icon={<Newspaper className="h-4 w-4" />} title="Central de Notícias" sub="O que aconteceu no mundo otaku — dados reais, atualizado o dia todo" action={
-        <button onClick={() => go("news")} className="flex items-center gap-1 text-xs font-bold text-primary hover:underline">ver tudo <ChevronRight className="h-3.5 w-3.5" /></button>
-      } />
-      <div className="no-scrollbar flex gap-3 overflow-x-auto pb-2">
-        {news.slice(0, 8).map((n) => (
-          <button
-            key={n.id}
-            onClick={() => n.workId && openWork(n.workId)}
-            className="group w-64 shrink-0 overflow-hidden rounded-2xl border border-border bg-card text-left transition hover:-translate-y-0.5 hover:shadow-lg"
-          >
-            <div className="relative aspect-video w-full overflow-hidden" style={{ background: "var(--muted)" }}>
-              {n.image && (
-                <img
-                  src={`/api/img?u=${encodeURIComponent(n.image)}`}
-                  alt={n.title}
-                  loading="lazy"
-                  referrerPolicy="no-referrer"
-                  className="h-full w-full object-cover transition group-hover:scale-105"
-                />
-              )}
-              <span className="bg-brand-gradient absolute left-2 top-2 rounded-md px-2 py-0.5 text-[10px] font-black uppercase text-white">{n.badge}</span>
-            </div>
-            <div className="p-3">
-              <p className="line-clamp-1 text-sm font-bold">{n.title}</p>
-              <p className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-muted-foreground">{n.summary}</p>
-              {n.source && <p className="mt-1.5 text-[9px] font-bold uppercase tracking-wider text-muted-foreground/70">fonte: {n.source}</p>}
-            </div>
-          </button>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-/** Capítulos da semana — grade compacta por dia (estimativa semanal de séries ativas) */
-function ChapterWeekStrip({ releases }: { releases: ChapterRelease[] }) {
-  const openWork = usePortal((s) => s.openWork);
-  const go = usePortal((s) => s.go);
-  const today = new Date().getDay();
-  const WD = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
-  const byDay: ChapterRelease[][] = Array.from({ length: 7 }, () => []);
-  for (const r of releases) {
-    const d = new Date(r.dateISO + "T12:00:00").getDay();
-    byDay[d].push(r);
-  }
-  if (!releases.length) return null;
-  return (
-    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
-      {byDay.map((items, day) => (
-        <div key={day} className={`rounded-2xl border p-2.5 ${day === today ? "border-primary/50 bg-primary/5" : "border-border bg-card"}`}>
-          <p className={`mb-2 flex items-center justify-between text-[10px] font-black uppercase tracking-wider ${day === today ? "text-primary" : "text-muted-foreground"}`}>
-            {WD[day]}
-            {day === today && <span className="rounded bg-primary px-1 py-px text-[8px] text-white">hoje</span>}
-          </p>
-          <div className="flex flex-col gap-1">
-            {items.length === 0 && <p className="py-1.5 text-[10px] text-muted-foreground">—</p>}
-            {items.slice(0, 4).map((r) => (
-              <button key={r.work.id} onClick={() => openWork(r.work.id)} className="flex items-center gap-1.5 rounded-lg bg-secondary/70 px-1.5 py-1.5 text-left transition hover:bg-accent">
-                <div className="h-9 w-7 shrink-0 overflow-hidden rounded" style={{ background: r.work.coverColor ? `${r.work.coverColor}33` : "var(--muted)", minWidth: "1.75rem" }}>
-                  {r.work.cover && (
-                    <img src={`/api/img?u=${encodeURIComponent(r.work.cover)}`} alt="" loading="lazy" referrerPolicy="no-referrer" className="h-full w-full object-cover" />
-                  )}
-                </div>
-                <div className="min-w-0">
-                  <p className="truncate text-[10px] font-bold leading-tight">{r.work.title}</p>
-                  <p className="flex items-center gap-0.5 text-[9px] font-bold text-primary">
-                    <Check className="h-2 w-2" /> {r.nextChapter ? `cap ${r.nextChapter}` : "novo cap"}{r.stale ? " (ritmo estimado)" : ""}
-                  </p>
-                </div>
-              </button>
-            ))}
-            {items.length > 4 && (
-              <button onClick={() => go("calendar")} className="pt-0.5 text-[9px] font-bold text-primary hover:underline">
-                +{items.length - 4} neste dia
-              </button>
-            )}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-/** Linha de revistas — cards com faixa de capas reais */
-function MagazineRow({ magazines }: { magazines: MagEntry[] }) {
-  const openExplore = usePortal((s) => s.openExplore);
-  const go = usePortal((s) => s.go);
-  if (!magazines.length) return null;
-  return (
-    <div className="no-scrollbar flex gap-3 overflow-x-auto pb-2">
-      {magazines.slice(0, 14).map((m) => (
-        <button
-          key={m.name}
-          onClick={() => openExplore({ mag: m.name, q: "" })}
-          className="group w-56 shrink-0 rounded-2xl border border-border bg-card p-3 text-left transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-lg"
-          title={`${m.name} · ${m.count} obras`}
-        >
-          <div className="flex items-center justify-between gap-2">
-            <p className="truncate text-xs font-black">{m.name}</p>
-            <span className="shrink-0 rounded bg-primary/10 px-1.5 py-0.5 text-[9px] font-black text-primary">{m.count}</span>
-          </div>
-          <p className="mt-0.5 truncate text-[10px] text-muted-foreground">{m.publisher ?? "revista"}{m.schedule ? ` · ${m.schedule}` : ""}</p>
-          <div className="mt-2 flex">
-            {m.covers.slice(0, 3).map((c, i) => (
-              <div
-                key={c.id}
-                className="h-16 w-11 overflow-hidden rounded-md border border-border"
-                style={{ background: c.coverColor ? `${c.coverColor}33` : "var(--muted)", marginLeft: i > 0 ? "-14px" : undefined, zIndex: 10 - i, position: "relative" }}
-              >
-                <img src={`/api/img?u=${encodeURIComponent(c.cover)}`} alt={c.title} loading="lazy" referrerPolicy="no-referrer" className="h-full w-full object-cover" />
-              </div>
-            ))}
-          </div>
-          <span className="mt-2 flex items-center gap-0.5 text-[10px] font-bold text-primary">ver obras <ChevronRight className="h-3 w-3 transition group-hover:translate-x-0.5" /></span>
-        </button>
-      ))}
-      <button
-        onClick={() => go("magazines")}
-        className="flex w-36 shrink-0 flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-border bg-card/50 text-sm font-bold text-muted-foreground transition hover:border-primary/40 hover:text-primary"
-      >
-        <BookMarked className="h-5 w-5" /> ver todas as revistas
-      </button>
-    </div>
-  );
-}
-
-const SECTIONS_CACHE_KEY = "ov-sections-v3"; // v3: { core, more, sales, mags } — fases
+const SECTIONS_CACHE_KEY = "ov-sections-v4"; // v4: { core, more } — home enxuta (vendas/revistas viraram views)
 const SECTIONS_CACHE_TTL = 30 * 60_000;
 // carrossel Hype também hidrata instantâneo — era a última seção "oco" ao reabrir o site
 const HYPE_CACHE_PREFIX = "ov-hype-v1-";
@@ -368,17 +195,16 @@ export function HomeView() {
   //     o usuário rola até a sentinela (IntersectionObserver) ou após alguns segundos de folga.
   // Reabrir o site hidrata TODAS as fases do sessionStorage na hora (sem loading).
   interface CoreData {
-    launches: WorkData[]; newMangas: WorkData[]; chapterReleases: ChapterRelease[];
-    news: NewsItem[]; counts: { total: number };
+    launches: WorkData[];
+    counts: { total: number };
   }
   interface MoreData {
-    hits: WorkData[]; bestsellers: WorkData[]; masterpieces: WorkData[]; ecchiHits: WorkData[];
-    manhwaHits: WorkData[]; animePicks: WorkData[]; monthLaunches: WorkData[]; webnovelPicks: WorkData[];
+    hits: WorkData[];
+    bestsellers: WorkData[];
+    monthLaunches: WorkData[];
   }
   const [core, setCore] = useState<CoreData | null>(null);
   const [more, setMore] = useState<MoreData | null>(null);
-  const [sales, setSales] = useState<{ volumes: SaleItem[]; series: SaleItem[] } | null>(null);
-  const [mags, setMags] = useState<{ magazines: MagEntry[] } | null>(null);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
@@ -386,24 +212,26 @@ export function HomeView() {
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const openExplore = usePortal((s) => s.openExplore);
   const go = usePortal((s) => s.go);
-  const openWork = usePortal((s) => s.openWork);
   const user = usePortal((s) => s.user);
 
-  // FASE 2 — uma única vez por montagem (single-flight via ref); vendas/revistas vão junto
+  // Dedup global da home: nenhuma obra aparece em duas seções (prioridade: Lançamentos →
+  // Bombando → Top → Agenda). Revisão apontou repetição entre carrosséis (ex.: Bombando × Manhwas).
+  const seenLaunch = useMemo(() => new Set((core?.launches ?? []).map((w) => w.id)), [core]);
+  const hits = useMemo(() => (more?.hits ?? []).filter((w) => !seenLaunch.has(w.id)), [more, seenLaunch]);
+  const seenHits = useMemo(() => new Set([...seenLaunch, ...hits.map((w) => w.id)]), [seenLaunch, hits]);
+  const bestsellers = useMemo(() => (more?.bestsellers ?? []).filter((w) => !seenHits.has(w.id)), [more, seenHits]);
+  const monthLaunches = useMemo(
+    () => (more?.monthLaunches ?? []).filter((w) => !seenHits.has(w.id) && !bestsellers.some((b) => b.id === w.id)),
+    [more, seenHits, bestsellers]
+  );
+
+  // FASE 2 — uma única vez por montagem (single-flight via ref)
   const loadMorePhase = useCallback(() => {
     if (moreRequested.current) return;
     moreRequested.current = true;
     fetchJSON("/api/sections?part=more").then((d) => {
-      if (d?.ok) {
-        setMore({
-          hits: d.hits ?? [], bestsellers: d.bestsellers ?? [], masterpieces: d.masterpieces ?? [],
-          ecchiHits: d.ecchiHits ?? [], manhwaHits: d.manhwaHits ?? [], animePicks: d.animePicks ?? [],
-          monthLaunches: d.monthLaunches ?? [], webnovelPicks: d.webnovelPicks ?? [],
-        });
-      }
+      if (d?.ok) setMore({ hits: d.hits ?? [], bestsellers: d.bestsellers ?? [], monthLaunches: d.monthLaunches ?? [] });
     });
-    fetchJSON("/api/sales").then((d) => { if (d?.ok) setSales(d); });
-    fetchJSON("/api/magazines").then((d) => { if (d?.ok) setMags(d); });
   }, []);
 
   useEffect(() => {
@@ -419,8 +247,6 @@ export function HomeView() {
           if (cached?.at && Date.now() - cached.at < SECTIONS_CACHE_TTL && cached?.core) {
             setCore(cached.core);
             if (cached.more) setMore(cached.more);
-            if (cached.sales) setSales(cached.sales);
-            if (cached.mags) setMags(cached.mags);
             setLoading(false);
             hydrated = true;
           }
@@ -433,16 +259,13 @@ export function HomeView() {
       const d = await fetchJSON("/api/sections?part=core");
       if (!alive) return;
       if (d?.ok) {
-        const c: CoreData = {
-          launches: d.launches ?? [], newMangas: d.newMangas ?? [], chapterReleases: d.chapterReleases ?? [],
-          news: d.news ?? [], counts: d.counts ?? { total: 0 },
-        };
+        const c: CoreData = { launches: d.launches ?? [], counts: d.counts ?? { total: 0 } };
         setCore(c);
         setFailed(false);
         // guarda na sessão preservando as fases que já chegaram
         try {
           const prev = JSON.parse(sessionStorage.getItem(SECTIONS_CACHE_KEY) ?? "{}");
-          sessionStorage.setItem(SECTIONS_CACHE_KEY, JSON.stringify({ at: Date.now(), core: c, more: prev.more, sales: prev.sales, mags: prev.mags }));
+          sessionStorage.setItem(SECTIONS_CACHE_KEY, JSON.stringify({ at: Date.now(), core: c, more: prev.more }));
         } catch {}
       } else if (!hydrated) {
         // só marca falha se NEM cache havia — home nunca fica oca em silêncio
@@ -456,13 +279,7 @@ export function HomeView() {
     const idleTimer = setTimeout(() => {
       if (hydrated) {
         fetchJSON("/api/sections?part=more").then((d) => {
-          if (alive && d?.ok) {
-            setMore({
-              hits: d.hits ?? [], bestsellers: d.bestsellers ?? [], masterpieces: d.masterpieces ?? [],
-              ecchiHits: d.ecchiHits ?? [], manhwaHits: d.manhwaHits ?? [], animePicks: d.animePicks ?? [],
-              monthLaunches: d.monthLaunches ?? [], webnovelPicks: d.webnovelPicks ?? [],
-            });
-          }
+          if (alive && d?.ok) setMore({ hits: d.hits ?? [], bestsellers: d.bestsellers ?? [], monthLaunches: d.monthLaunches ?? [] });
         });
       }
     }, 2_500);
@@ -501,21 +318,14 @@ export function HomeView() {
     return () => window.removeEventListener("online", on);
   }, [more, loadMorePhase]);
 
-  // persiste as fases no cache da sessão conforme chegam
+  // persiste a fase 2 no cache da sessão assim que chega
   useEffect(() => {
     if (!more) return;
     try {
       const prev = JSON.parse(sessionStorage.getItem(SECTIONS_CACHE_KEY) ?? "{}");
-      sessionStorage.setItem(SECTIONS_CACHE_KEY, JSON.stringify({ at: Date.now(), core: prev.core, more, sales: prev.sales, mags: prev.mags }));
+      sessionStorage.setItem(SECTIONS_CACHE_KEY, JSON.stringify({ at: Date.now(), core: prev.core, more }));
     } catch {}
   }, [more]);
-  useEffect(() => {
-    if (!sales && !mags) return;
-    try {
-      const prev = JSON.parse(sessionStorage.getItem(SECTIONS_CACHE_KEY) ?? "{}");
-      sessionStorage.setItem(SECTIONS_CACHE_KEY, JSON.stringify({ at: Date.now(), core: prev.core, more: prev.more, sales: sales ?? prev.sales, mags: mags ?? prev.mags }));
-    } catch {}
-  }, [sales, mags]);
 
   function retry() {
     setFailed(false);
@@ -549,6 +359,25 @@ export function HomeView() {
   return (
     <div className="flex flex-col gap-8">
       <HypeCarousel />
+
+      {/* Aoi — entrada principal da home */}
+      <section className="relative overflow-hidden rounded-3xl bg-hero-grad p-6 text-white sm:p-8">
+        <div className="relative z-10 flex flex-col items-start gap-4 sm:flex-row sm:items-center">
+          <span className="waifu-avatar flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-white/15 text-3xl backdrop-blur">🌸</span>
+          <div className="flex-1">
+            <p className="text-[11px] font-bold uppercase tracking-widest text-white/70">Sua waifu curadora</p>
+            <h3 className="text-xl font-black sm:text-2xl">Aoi-chan te ajuda a achar a próxima obsessão</h3>
+            <p className="mt-1 max-w-xl text-sm text-white/80">
+              Diga o que você sente namorar: "quero ecchi com boa história", "me dá manhwa de vingança" — ela garimpa o catálogo e responde com carinho. {user ? "Você já tem a Aoi disponível no menu!" : "Sem cadastro também funciona."}
+            </p>
+          </div>
+          <button onClick={() => go("assistant")} className="bg-white px-5 py-2.5 text-sm font-black text-slate-900 shadow-xl transition hover:scale-105">
+            Falar com a Aoi
+          </button>
+        </div>
+        <div className="pointer-events-none absolute -right-10 -top-16 h-56 w-56 rounded-full bg-white/10 blur-2xl" />
+        <div className="pointer-events-none absolute -bottom-20 right-32 h-44 w-44 rounded-full bg-white/10 blur-2xl" />
+      </section>
 
       {/* chips de categoria */}
       <div className="no-scrollbar flex gap-2 overflow-x-auto pb-1">
@@ -594,8 +423,6 @@ export function HomeView() {
 
       {core && (
         <>
-          {core.news?.length > 0 && <NewsTeaser news={core.news} />}
-
           <section className="cv-auto">
             <SectionHeader icon={<Rocket className="h-4 w-4" />} title="Lançamentos Recentes" sub="Estreias fresquinhas dos últimos 90 dias" action={
               <button onClick={() => openExplore({ sort: "new", q: "" })} className="flex items-center gap-1 text-xs font-bold text-primary hover:underline">ver todos <ChevronRight className="h-3.5 w-3.5" /></button>
@@ -603,201 +430,42 @@ export function HomeView() {
             <CardRow items={core.launches} />
           </section>
 
-          {core.newMangas?.length > 0 && (
-            <section className="cv-auto">
-              <SectionHeader icon={<Sparkles className="h-4 w-4" />} title="Mangás Novos — Acabaram de Chegar" sub="Começaram a publicar agora: seja o primeiro a acompanhar desde o capítulo 1" action={
-                <button onClick={() => openExplore({ sort: "new", type: "manga", q: "" })} className="flex items-center gap-1 text-xs font-bold text-primary hover:underline">ver todos <ChevronRight className="h-3.5 w-3.5" /></button>
-              } />
-              <CardRow items={core.newMangas} />
-            </section>
-          )}
-
           {/* anúncio SÓ renderiza em contexto safe com AdSense configurado (ver AdSlot) */}
           <AdSlot slotId="home-mid" />
 
-          {core.chapterReleases?.length > 0 && (
-            <section className="cv-auto">
-              <SectionHeader icon={<Clock className="h-4 w-4" />} title="Lançamentos de Capítulos" sub="Próximos capítulos das séries que você acompanha — estimativa semanal das séries ativas" action={
-                <button onClick={() => go("calendar")} className="flex items-center gap-1 text-xs font-bold text-primary hover:underline">calendário completo <ChevronRight className="h-3.5 w-3.5" /></button>
-              } />
-              <ChapterWeekStrip releases={core.chapterReleases} />
-            </section>
-          )}
-
-          {/* SENTINELA do carregamento em fases: ao entrar na tela (ou 600px antes),
-              a fase 2 é pedida ao servidor — Vendas, Revistas, Bombando, Top, Obras-Primas,
-              Manhwas, Ecchi, Animes, Webnovels e Agenda chegam quando o usuário realmente rola. */}
-          <div ref={sentinelRef} aria-hidden className="h-px w-full" />
-
           {more && (
-          <>
-          {sales && sales.volumes.length > 0 && (
-            <section className="cv-auto">
-              <SectionHeader icon={<Layers className="h-4 w-4" />} title="Vendas: Volumes Mais Vendidos" sub="Rankings reais da Oricon — os volumes individuais campeões de cada ano" action={
-                <button onClick={() => go("sales")} className="flex items-center gap-1 text-xs font-bold text-primary hover:underline">ranking completo <ChevronRight className="h-3.5 w-3.5" /></button>
-              } />
-              <div className="no-scrollbar flex snap-x gap-3 overflow-x-auto px-1 pb-2">
-                {sales.volumes.slice(0, 14).map((v, i) => {
-                  return (
-                    <button
-                      key={`${v.series}-${v.volume}-${v.year}`}
-                      onClick={() => openWork(v.workId)}
-                      className="cv-auto group relative w-[150px] shrink-0 snap-start overflow-hidden rounded-2xl border border-border bg-card text-left transition-all duration-300 hover:-translate-y-1 hover:shadow-xl sm:w-[168px]"
-                    >
-                      <div className="relative aspect-[2/3] w-full overflow-hidden" style={{ background: v.coverColor ? `${v.coverColor}22` : "var(--muted)" }}>
-                        <img
-                          src={`/api/img?u=${encodeURIComponent(v.cover)}`}
-                          alt={`Capa de ${v.title}`}
-                          loading="lazy"
-                          decoding="async"
-                          referrerPolicy="no-referrer"
-                          className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.06]"
-                        />
-                        <span className="absolute left-2 top-2 flex h-7 w-7 items-center justify-center rounded-lg bg-black/70 text-xs font-black text-white backdrop-blur">{i + 1}</span>
-                        <div className="absolute inset-x-0 bottom-0 flex bg-gradient-to-t from-black/85 via-black/45 to-transparent p-2 pt-6">
-                          <span className="bg-brand-gradient rounded-md px-1.5 py-0.5 text-[9px] font-black uppercase text-white">Vol. {v.volume}</span>
-                        </div>
-                      </div>
-                      <div className="p-2.5">
-                        <p className="line-clamp-2 min-h-[2.4rem] text-[13px] font-bold leading-snug">{v.title}</p>
-                        <p className="mt-1 text-[10px] font-bold text-primary">{fmtCopies(v.copies)} cópias · {v.year}</p>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </section>
+            <>
+              <section className="cv-auto">
+                <SectionHeader icon={<Flame className="h-4 w-4" />} title="Bombando: Novos Hits" sub="Em andamento, poucos capítulos publicados e já febre entre os leitores" action={
+                  <button onClick={() => openExplore({ sort: "new", status: "RELEASING", q: "" })} className="flex items-center gap-1 text-xs font-bold text-primary hover:underline">explorar <ChevronRight className="h-3.5 w-3.5" /></button>
+                } />
+                <CardRow items={hits} />
+              </section>
+
+              <section className="cv-auto">
+                <SectionHeader icon={<Trophy className="h-4 w-4" />} title="Top Popularidade" sub="As obras mais favoritadas da comunidade" action={
+                  <button onClick={() => openExplore({ sort: "favorites", q: "" })} className="flex items-center gap-1 text-xs font-bold text-primary hover:underline">ranking completo <ChevronRight className="h-3.5 w-3.5" /></button>
+                } />
+                <CardRow items={bestsellers} ranks />
+              </section>
+
+              {monthLaunches.length > 0 && (
+                <section className="cv-auto">
+                  <SectionHeader icon={<CalendarDays className="h-4 w-4" />} title="Agenda do Mês" sub="Estreias e retornos previstos — datas estimadas, confirme no calendário" action={
+                    <button onClick={() => go("calendar")} className="flex items-center gap-1 text-xs font-bold text-primary hover:underline">abrir calendário <ChevronRight className="h-3.5 w-3.5" /></button>
+                  } />
+                  <CardRow items={monthLaunches} />
+                </section>
+              )}
+            </>
           )}
 
-          {sales && sales.series.length > 0 && (
-            <section className="cv-auto">
-              <SectionHeader icon={<TrendingUp className="h-4 w-4" />} title="Séries Mais Vendidas do Ano" sub="O que o Japão inteiro comprou — por ano, direto dos relatórios públicos da Oricon" action={
-                <button onClick={() => go("sales")} className="flex items-center gap-1 text-xs font-bold text-primary hover:underline">ver por ano <ChevronRight className="h-3.5 w-3.5" /></button>
-              } />
-              <div className="overflow-hidden rounded-2xl border border-border bg-card">
-                {sales.series.slice(0, 8).map((s, i) => (
-                  <button key={`${s.series}-${s.year}`} onClick={() => openWork(s.workId)} className="group flex w-full items-center gap-3 border-b border-border p-2.5 text-left transition last:border-b-0 hover:bg-accent/60">
-                    <span className={`flex h-7 w-8 shrink-0 items-center justify-center rounded-lg text-xs font-black ${i === 0 ? "bg-amber-400 text-black" : i === 1 ? "bg-slate-300 text-black" : i === 2 ? "bg-orange-700 text-white" : "bg-secondary text-muted-foreground"}`}>{i + 1}</span>
-                    <div className="h-12 w-9 shrink-0 overflow-hidden rounded-md" style={{ background: s.coverColor ? `${s.coverColor}33` : "var(--muted)" }}>
-                      <img src={`/api/img?u=${encodeURIComponent(s.cover)}`} alt="" loading="lazy" referrerPolicy="no-referrer" className="h-full w-full object-cover" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-[13px] font-bold">{s.title}</p>
-                      <p className="text-[10px] text-muted-foreground">{fmtCopies(s.copies)} de cópias em {s.year}</p>
-                    </div>
-                    <BookOpen className="h-3.5 w-3.5 shrink-0 text-muted-foreground opacity-0 transition group-hover:opacity-100" />
-                  </button>
-                ))}
-              </div>
-            </section>
-          )}
-
-          {mags && mags.magazines?.length > 0 && (
-            <section className="cv-auto">
-              <SectionHeader icon={<BookMarked className="h-4 w-4" />} title="Revistas & Editoras" sub="Onde cada obra é publicada de verdade — Weekly Shōnen Jump, Young Animal e mais" action={
-                <button onClick={() => go("magazines")} className="flex items-center gap-1 text-xs font-bold text-primary hover:underline">todas as revistas <ChevronRight className="h-3.5 w-3.5" /></button>
-              } />
-              <MagazineRow magazines={mags.magazines} />
-            </section>
-          )}
-
-          <section className="cv-auto">
-            <SectionHeader icon={<Flame className="h-4 w-4" />} title="Bombando: Novos Hits" sub="Em andamento, poucos capítulos publicados e já febre entre os leitores" action={
-              <button onClick={() => openExplore({ sort: "new", status: "RELEASING", q: "" })} className="flex items-center gap-1 text-xs font-bold text-primary hover:underline">explorar <ChevronRight className="h-3.5 w-3.5" /></button>
-            } />
-            <CardRow items={more.hits} />
-          </section>
-
-          <section className="cv-auto">
-            <SectionHeader icon={<Trophy className="h-4 w-4" />} title="Top Popularidade" sub="As obras mais favoritadas de todos os tempos" action={
-              <button onClick={() => openExplore({ sort: "favorites", q: "" })} className="flex items-center gap-1 text-xs font-bold text-primary hover:underline">ranking completo <ChevronRight className="h-3.5 w-3.5" /></button>
-            } />
-            <CardRow items={more.bestsellers} ranks />
-          </section>
-
-          {more.masterpieces?.length > 0 && (
-            <section className="cv-auto">
-              <SectionHeader icon={<Star className="h-4 w-4" />} title="Obras-Primas" sub="As melhores notas de todos os tempos — patrimônio do meio" action={
-                <button onClick={() => openExplore({ sort: "score", q: "" })} className="flex items-center gap-1 text-xs font-bold text-primary hover:underline">ver todas <ChevronRight className="h-3.5 w-3.5" /></button>
-              } />
-              <CardRow items={more.masterpieces} />
-            </section>
-          )}
-
-          {more.manhwaHits?.length > 0 && (
-            <section className="cv-auto">
-              <SectionHeader icon={<Gauge className="h-4 w-4" />} title="Manhwas em Alta" sub="Coreia dominando: os webtoons mais acompanhados" action={
-                <button onClick={() => openExplore({ type: "manhwa", q: "" })} className="flex items-center gap-1 text-xs font-bold text-primary hover:underline">todos <ChevronRight className="h-3.5 w-3.5" /></button>
-              } />
-              <CardRow items={more.manhwaHits} />
-            </section>
-          )}
-
-          {more.ecchiHits?.length > 0 && (
-            <section className="cv-auto">
-              <SectionHeader icon={<Flame className="h-4 w-4" />} title="Ecchi/Sensorial em Alta" sub="Picantes de bom gosto — arte bonita e clima quente (etiquetados)" action={
-                <button onClick={() => openExplore({ classification: "suggestive", q: "" })} className="flex items-center gap-1 text-xs font-bold text-primary hover:underline">explorar <ChevronRight className="h-3.5 w-3.5" /></button>
-              } />
-              <CardRow items={more.ecchiHits} />
-            </section>
-          )}
-
-          {more.animePicks?.length > 0 && (
-            <section className="cv-auto">
-              <SectionHeader icon={<Sparkles className="h-4 w-4" />} title="Animes do Momento" sub="Os mais amados da tela para a sua telinha" action={
-                <button onClick={() => openExplore({ type: "anime", q: "" })} className="flex items-center gap-1 text-xs font-bold text-primary hover:underline">todos <ChevronRight className="h-3.5 w-3.5" /></button>
-              } />
-              <CardRow items={more.animePicks} />
-            </section>
-          )}
-
-          {more.webnovelPicks?.length > 0 && (
-            <section className="cv-auto">
-              <SectionHeader icon={<Globe className="h-4 w-4" />} title="Webnovels em Alta" sub="Romances de capítulos que nasceram na internet — Royal Road, Naver, Qidian e mais (MangaUpdates)" action={
-                <button onClick={() => openExplore({ type: "webnovel", q: "" })} className="flex items-center gap-1 text-xs font-bold text-primary hover:underline">todos <ChevronRight className="h-3.5 w-3.5" /></button>
-              } />
-              <CardRow items={more.webnovelPicks} />
-            </section>
-          )}
-
-          {more.monthLaunches.length > 0 && (
-            <section className="cv-auto">
-              <SectionHeader icon={<CalendarDays className="h-4 w-4" />} title="Agenda do Mês" sub="Estreias e retornos programados para este mês" action={
-                <button onClick={() => go("calendar")} className="flex items-center gap-1 text-xs font-bold text-primary hover:underline">abrir calendário <ChevronRight className="h-3.5 w-3.5" /></button>
-              } />
-              <CardRow items={more.monthLaunches} />
-            </section>
-          )}
-          </>
-          )}
+          {/* stats do catálogo */}
+          <p className="flex items-center justify-center gap-2 text-center text-[11px] text-muted-foreground">
+            <Gauge className="h-3.5 w-3.5" />
+            Catálogo com {core.counts.total.toLocaleString("pt-BR")} obras · atualização automática a cada 30 min · mais opções em Explorar
+          </p>
         </>
-      )}
-
-      {/* banner da Aoi */}
-      <section className="relative overflow-hidden rounded-3xl bg-hero-grad p-6 text-white sm:p-8">
-        <div className="relative z-10 flex flex-col items-start gap-4 sm:flex-row sm:items-center">
-          <span className="waifu-avatar flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-white/15 text-3xl backdrop-blur">🌸</span>
-          <div className="flex-1">
-            <p className="text-[11px] font-bold uppercase tracking-widest text-white/70">Sua waifu curadora</p>
-            <h3 className="text-xl font-black sm:text-2xl">Aoi-chan te ajuda a achar a próxima obsessão</h3>
-            <p className="mt-1 max-w-xl text-sm text-white/80">
-              Diga o que você sente namorar: "quero ecchi com boa história", "me dá manhwa de vingança" — ela garimpa no catálogo real e responde com carinho. {user ? "Você já tem a Aoi disponível no menu!" : "Sem cadastro também funciona."}
-            </p>
-          </div>
-          <button onClick={() => go("assistant")} className="bg-white px-5 py-2.5 text-sm font-black text-slate-900 shadow-xl transition hover:scale-105">
-            Falar com a Aoi
-          </button>
-        </div>
-        <div className="pointer-events-none absolute -right-10 -top-16 h-56 w-56 rounded-full bg-white/10 blur-2xl" />
-        <div className="pointer-events-none absolute -bottom-20 right-32 h-44 w-44 rounded-full bg-white/10 blur-2xl" />
-      </section>
-
-      {/* stats do catálogo */}
-      {core && (
-        <p className="flex items-center justify-center gap-2 text-center text-[11px] text-muted-foreground">
-          <Gauge className="h-3.5 w-3.5" />
-          Catálogo com {core.counts.total.toLocaleString("pt-BR")} obras reais · atualização automática a cada 30 min · busque mais via Explorar
-        </p>
       )}
     </div>
   );

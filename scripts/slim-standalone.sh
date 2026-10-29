@@ -72,6 +72,13 @@ rm -f "$S"/.env "$S"/.env.production "$S"/.env.local
 #    plataforma o standalone é órfão → sem json = modo FILE silencioso (sem
 #    Turso, sem Aoi, catálogo importado gota-a-gota — incidente "site limitado").
 #    Cópia explícita a partir da raiz + verificação dura (fonte da verdade = raiz).
+#    v3.9.5b: fallback para o cofre externo — o sandbox da plataforma apaga arquivos
+#    não-rastreados a cada hibernação/restauração do workspace; o json vive também
+#    em /home/z/.otakuverse-credentials.json e se auto-restaura para a raiz.
+if [ ! -f otakuverse.runtime.json ] && [ -f /home/z/.otakuverse-credentials.json ]; then
+  cp -f /home/z/.otakuverse-credentials.json otakuverse.runtime.json
+  echo "[slim] runtime json restaurado do cofre externo"
+fi
 if [ -f otakuverse.runtime.json ]; then
   cp -f otakuverse.runtime.json "$S/otakuverse.runtime.json"
   echo "[slim] runtime json copiado para o standalone ($(wc -c < "$S/otakuverse.runtime.json") bytes)"

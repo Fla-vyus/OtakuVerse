@@ -149,13 +149,7 @@ async function autoRestore() {
       console.log(`[restore] banco com ${count} obras (esperado ≥ ${floor}) — restaurando do snapshot git-safe…`);
       const { stdout: out2 } = await promisify(execFile)(process.execPath, [`${root}/scripts/catalog-restore.ts`, "--force"], { cwd: root, timeout: 600_000 });
       console.log("[restore]", out2.split("\n").slice(-3).join(" | "));
-      // v3.7.4: o pool em memória fica preso no estado pós-boot (poucas obras) — o
-      // watchdog só cura pool VAZIO (0). Após restore, reconstrói o pool NA HORA,
-      // senão o site fresco fica com ~14 obras por 15min (TTL) — comprovado no sim.
-      const worksMod = await import("@/lib/works");
-      worksMod.forceRebuild()
-        .then((c) => console.log(`[restore] pool reconstruído: ${c.works.length} obras`))
-        .catch((e) => console.error("[restore] rebuild pós-restore falhou:", (e as Error).message));
+      // v4.0: sem pool em memória — as próximas leituras SQL já veem o banco restaurado.
     }
   } catch (e) {
     console.error("[restore] falhou (segue o baile):", (e as Error).message);
@@ -175,46 +169,28 @@ async function doVault(reason = "6h") {
   }
 }
 
-/** Watchdog: auto-diagnóstico a cada 5 min — o site NUNCA fica quebrado em
- *  silêncio. Checa: banco responde, pool de obras vivo, memória sob controle,
- *  imagem-cache não estourou. Problemas aparecem no log com [watchdog].
- *  v3.6 — CURA ATIVA: pool vazio com banco saudável deixa de ser só um log —
- *  o watchdog dispara o rebuild na hora (foi exatamente o incidente de hoje:
- *  tick do cron invalidou o pool às 17:55 e o site passou ~1h "sem catálogo"
- *  porque ninguém acessou nada até alguém reaquecer à mão). */
+/** Watchdog: auto-diagnóstico a cada 5 min (SÓ com ENABLE_JOBS=1 — local).
+ *  v4.0: sem pool para vigiar — checa banco (SELECT 1 + COUNT), memória e
+ *  quantidade de obras no banco (catálogo ralo = problema de ingestão, não de cache). */
 async function watchdog() {
   try {
     const t0 = Date.now();
     const prisma = (await import("@/lib/db")).db;
     await prisma.$queryRawUnsafe("SELECT 1");
     const dbMs = Date.now() - t0;
-    const worksMod = await import("@/lib/works");
-    const works = worksMod.peekStaleCache()?.works.length ?? 0;
+    const cnt = (await prisma.$queryRawUnsafe(`SELECT COUNT(*) as n FROM "Work"`)) as { n: number }[];
+    const works = Number(cnt[0]?.n ?? 0);
     const mem = process.memoryUsage();
     const rssMB = Math.round(mem.rss / 1048576);
     const issues: string[] = [];
     if (dbMs > 2000) issues.push(`banco lento (${dbMs}ms)`);
-    if (works === 0) issues.push("pool de obras vazio (banco perdido ou boot frio?)");
-    if (rssMB > 1500) issues.push(`memória CRÍTICA (${rssMB}MB — OOM da box é 1.9GB, considere reiniciar)`);
-    else if (rssMB > 1100) issues.push(`memória alta (${rssMB}MB)`);
+    if (works < 1000) issues.push(`catálogo ralo (${works} obras no banco)`);
+    if (rssMB > 900) issues.push(`memória CRÍTICA (${rssMB}MB)`);
+    else if (rssMB > 500) issues.push(`memória alta (${rssMB}MB)`);
     if (issues.length) console.warn(`[watchdog] atenção: ${issues.join(" · ")}`);
-    else console.log(`[watchdog] ok — banco ${dbMs}ms, pool ${works} obras, rss ${rssMB}MB`);
-    // v3.9.4 — rastro em disco: se a instância morrer, o último watchdog conta a
-    // história (rss subindo? banco lento? pool vazio?) sem depender dos logs da plataforma
-    flight("watchdog", { rssMB, pool: works, dbMs, issues: issues.length });
-    // cura ativa: banco responde rápido + pool vazio/quase vazio → reconstrói agora
-    // (v3.7.4: <500 em vez de ===0 — boot frio pós-restore começa com poucas obras
-    // e ficava "saudável" com catálogo ralo; 40k obras é o estado legítimo deste site)
-    if (works < 500 && dbMs < 2000) {
-      const now = Date.now();
-      if (now - (g.__ovWatchdogHealedAt ?? 0) > 5 * 60_000) {
-        g.__ovWatchdogHealedAt = now;
-        console.warn("[watchdog] CURA ATIVA: disparando rebuild do pool…");
-        worksMod.forceRebuild()
-          .then((c) => console.log(`[watchdog] pool restaurado: ${c.works.length} obras`))
-          .catch((e) => console.error("[watchdog] rebuild de cura falhou:", (e as Error).message));
-      }
-    }
+    else console.log(`[watchdog] ok — banco ${dbMs}ms, ${works} obras no banco, rss ${rssMB}MB`);
+    // v3.9.4 — rastro em disco: se a instância morrer, o último watchdog conta a história
+    flight("watchdog", { rssMB, works, dbMs, issues: issues.length });
   } catch (e) {
     console.error("[watchdog] BANCO NÃO RESPONDE:", (e as Error).message);
   }

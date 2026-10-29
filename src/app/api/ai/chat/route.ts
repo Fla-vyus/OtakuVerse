@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAoi } from "@/lib/ai";
-import { getAllWorks } from "@/lib/works";
+import { aiCandidates } from "@/lib/works-sql";
 import { db } from "@/lib/db";
 import { rateLimit } from "@/lib/auth";
 import type { WorkData } from "@/lib/types";
@@ -126,7 +126,7 @@ export async function POST(req: NextRequest) {
     const last = [...messages].reverse().find((m) => m.role === "user")?.content ?? "";
     if (!last.trim()) return NextResponse.json({ ok: false, error: "Mensagem vazia" }, { status: 400 });
 
-    const all = await getAllWorks(false); // IA do catálogo principal — nunca mistura adulto
+    const all = await aiCandidates(false); // IA do catálogo principal — nunca mistura adulto
     const candidates = scoreCandidates(last, all);
     // enriquece os 42 candidatos com a sinopse real (1 query indexada — o pool
     // magro do cache não carrega synopsis; a Aoi continua recomendando com contexto)

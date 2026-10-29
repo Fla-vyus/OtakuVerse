@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAoi } from "@/lib/ai";
-import { getWorkById, getAllWorks, computeRelated } from "@/lib/works";
+import { getWorkById, computeRelated } from "@/lib/works";
+import { aiCandidates } from "@/lib/works-sql";
 import { db } from "@/lib/db";
 import { TYPE_LABEL, STATUS_LABEL, fmtDate, fmtNum, type WorkData } from "@/lib/types";
 
@@ -27,7 +28,7 @@ export async function POST(req: NextRequest) {
     const work = await getWorkById(String(id));
     if (!work) return NextResponse.json({ ok: false, error: "Obra não encontrada" }, { status: 404 });
 
-    const all = await getAllWorks();
+    const all = await aiCandidates();
     const related = computeRelated(work, all);
     const similarList = related.similar.slice(0, 8)
       .map((w) => `- ${w.title} [#${w.id}] (nota ${w.avgScore ?? "?"}) — ${w.genres.join(", ")}`)

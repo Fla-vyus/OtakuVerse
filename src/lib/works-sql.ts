@@ -17,7 +17,11 @@ import { db } from "@/lib/db";
 import { isRemoteDb } from "@/lib/runtime-env";
 import { toCardWork } from "@/lib/works";
 import { parseWork, type WorkData } from "@/lib/types";
-import type { AdultMode, RankMetric } from "@/lib/works";
+import { scoreForYou, type TasteProfileLike, type ListEntryLike, type ForYouResult } from "@/lib/scoring";
+
+// Métricas de ranking / modos adulto (dono atual — works.ts não é mais o pool)
+export type RankMetric = "popular" | "score" | "favorites" | "chapters";
+export type AdultMode = "hide" | "show" | "only";
 
 export const PER_PAGE_DEFAULT = 24;
 export const PER_PAGE_MAX = 60;
@@ -326,4 +330,52 @@ export async function selectCards(where: string, args: unknown[], orderBy: strin
     ...args, limit, offset
   );
   return rows.map((r) => parseWork(r));
+}
+
+// ---------- Candidatos delimitados (related / Para Você / IA) ----------
+// Em vez do pool completo, cada consumidor recebe um recorte por popularidade
+// (top-N) — memória transiente ≤ N×~6KB, liberada após a resposta.
+const RELATED_CANDIDATES = 1200;
+const FORYOU_CANDIDATES = 2000;
+const AI_CANDIDATES = 1500;
+
+/** Pool de candidatos para "obras relacionadas" (página de detalhe). */
+export async function relatedPool(adultZone: boolean): Promise<WorkData[]> {
+  assertRemoteOrDev();
+  return selectCards(adultZone ? `"classification" = 'adult'` : PUBLIC_GATE, [], `"popularity" DESC`, RELATED_CANDIDATES);
+}
+
+export interface ForYouOpts {
+  surprise?: boolean;
+  page?: number;
+  perPage?: number;
+  adult?: "hide" | "show" | "only";
+}
+
+/** Para Você (motor de afinidade) sobre candidatos SQL delimitados. */
+export async function forYouPage(
+  taste: TasteProfileLike,
+  favorites: string[],
+  lists: Record<string, ListEntryLike>,
+  opts: ForYouOpts = {}
+): Promise<{ items: ForYouResult[]; total: number }> {
+  assertRemoteOrDev();
+  const adult = opts.adult ?? "hide";
+  const gate = adult === "only" ? `"classification" = 'adult'` : adult === "show" ? `"type" != 'drama'` : PUBLIC_GATE;
+  const pool = await selectCards(gate, [], `"popularity" DESC`, FORYOU_CANDIDATES);
+  const byId = new Map(pool.map((w) => [w.id, w]));
+  const favWorks = favorites.map((id) => byId.get(id)).filter((w): w is WorkData => !!w);
+  const scored = pool
+    .map((w) => scoreForYou(w, taste, favWorks, lists, { excludeIds: new Set(favorites), surprise: !!opts.surprise }))
+    .filter((r) => r.score > -50);
+  scored.sort((a, b) => b.score - a.score);
+  const page = Math.max(1, opts.page ?? 1);
+  const perPage = Math.min(60, Math.max(6, opts.perPage ?? 18));
+  return { items: scored.slice((page - 1) * perPage, page * perPage), total: scored.length };
+}
+
+/** Catálogo para a IA: candidatos por popularidade (a IA nunca usou 40k — 1500 relevantes bastam). */
+export async function aiCandidates(adultZone = false, limit = AI_CANDIDATES): Promise<WorkData[]> {
+  assertRemoteOrDev();
+  return selectCards(adultZone ? `"classification" = 'adult'` : PUBLIC_GATE, [], `"popularity" DESC`, limit);
 }

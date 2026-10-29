@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getRankingSql } from "@/lib/works-sql";
-import type { RankMetric, AdultMode } from "@/lib/works";
+import { getRankingSql, type RankMetric, type AdultMode } from "@/lib/works-sql";
 import { getSessionUser } from "@/lib/auth";
 import { gzipJson } from "@/lib/httpCache";
 

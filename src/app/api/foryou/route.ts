@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { forYouPage } from "@/lib/works";
+import { forYouPage } from "@/lib/works-sql";
 import { getSessionUser } from "@/lib/auth";
 import { rateLimit, tooMany, clientIp } from "@/lib/security";
 

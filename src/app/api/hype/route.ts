@@ -5,7 +5,7 @@ import { anilistFetch, toWorkRow, SEARCH_FIELDS } from "@/lib/anilist";
 import { db } from "@/lib/db";
 import { classify } from "@/lib/works";
 import { parseWork } from "@/lib/types";
-import { getAllWorks, invalidateWorksCache } from "@/lib/works";
+import { selectCards, PUBLIC_GATE } from "@/lib/works-sql";
 import { cachedVolatile } from "@/lib/httpCache";
 
 export const dynamic = "force-dynamic";
@@ -45,12 +45,9 @@ export async function GET(req: NextRequest) {
     const data = await anilistFetch(MODES[mode].query, MODES[mode].vars, { timeoutMs: 8000 });
     const media: any[] = data?.Page?.media ?? [];
     const items = media.map((m) => parseWork(toWorkRow(m)));
-    // persiste em background (mantém o catálogo fresco).
-    // SÓ invalida o pool quando obra NOVA entra — antes, cada hit nukava o cache de 24k rows
-    // e a próxima request recompilava tudo do zero (fonte de lentidão e de "site vazio").
+    // persiste em background (mantém o catálogo fresco). v4.0: sem pool para invalidar.
     (async () => {
       try {
-        const before = await db.work.count();
         for (const m of media) {
           await db.work.upsert({
             where: { id: String(m.id) },
@@ -58,27 +55,24 @@ export async function GET(req: NextRequest) {
             update: toWorkRow(m),
           });
         }
-        const after = await db.work.count();
-        if (after > before) invalidateWorksCache();
       } catch {}
     })();
 
     g.__hypeCache = { ...(g.__hypeCache ?? { at: 0, data: {} }), at: Date.now(), data: { ...(g.__hypeCache?.data ?? {}), [mode]: items } };
     return cachedVolatile({ ok: true, mode, items, source: "anilist-live" });
   } catch {
-    // 2) fallback: ordena o banco local (getAllWorks tem stale-while-revalidate — nunca trava)
+    // 2) fallback: SQL direto (top por popularidade com banner/tração)
     try {
-      const all = await getAllWorks();
-      const sorters: Record<string, (a: any, b: any) => number> = {
-        hype: (a, b) => (b.popularity ?? 0) - (a.popularity ?? 0),
-        score: (a, b) => (b.avgScore ?? 0) - (a.avgScore ?? 0),
-        new: (a, b) => (b.startDate ?? "").localeCompare(a.startDate ?? ""),
-        classic: (a, b) => (b.favourites ?? 0) - (a.favourites ?? 0),
+      const orderBy: Record<string, string> = {
+        hype: `"popularity" DESC`,
+        score: `"avgScore" DESC`,
+        new: `"startDate" DESC`,
+        classic: `"favourites" DESC`,
       };
-      const items = all
-        .filter((w) => w.banner || (w.popularity ?? 0) > 50000)
-        .sort(sorters[mode])
-        .slice(0, 14);
+      const items = await selectCards(
+        `${PUBLIC_GATE} AND ("banner" IS NOT NULL OR "popularity" > 50000)`,
+        [], orderBy[mode] ?? orderBy.hype, 14
+      );
       return cachedVolatile({ ok: true, mode, items, source: "db" });
     } catch {
       return NextResponse.json({ ok: false, error: "Fontes temporariamente indisponíveis", items: [] }, { status: 200 });

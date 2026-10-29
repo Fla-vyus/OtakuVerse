@@ -4,7 +4,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { anilistFetch, toWorkRow, SEARCH_FIELDS } from "@/lib/anilist";
 import { db } from "@/lib/db";
 import { classify } from "@/lib/works";
-import { invalidateWorksCache } from "@/lib/works";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -70,13 +69,7 @@ export async function doRefresh(): Promise<{ refreshed: number; expanded: number
         await new Promise((r) => setTimeout(r, 2200)); // respeita rate limit AniList
       }
     }
-    // v3.9.4 — invalidação CONDICIONAL: o rebuild do pool é o pico de RAM da
-    // instância publicada (puxa milhares de rows do Turso + parse de objetos).
-    // Invalidar a cada ciclo forçava um rebuild EXTRA a cada 30min mesmo quando
-    // nada cresceu. O pool tem TTL com stale-while-revalidate — updates de
-    // tendência (refreshed) aparecem na revalidação natural; só um catálogo que
-    // CRESCOU (expanded>0) justifica o pico imediato.
-    if (expanded > 0) invalidateWorksCache();
+    // v4.0: sem pool em memória — nada a invalidar; as leituras SQL veem o banco fresco.
     g.__cronLast = Date.now();
     await db.eventLog.create({ data: { kind: "cron_refresh", payload: JSON.stringify({ refreshed, expanded }) } });
     flight("refresh-end", { refreshed, expanded, ms: Date.now() - t0, rssMB: Math.round(process.memoryUsage().rss / 1048576) });

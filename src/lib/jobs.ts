@@ -259,6 +259,19 @@ async function warmUpRoutes() {
 }
 
 export function startBackgroundJobs() {
+  // v4.0 — ETAPA 3 (regra de estabilidade da plataforma): NENHUM job em segundo
+  // plano por padrão. O ambiente publicado tem pouca RAM e sem reinício automático
+  // — nada pode rodar dentro do processo além de responder requisições. Tudo o que
+  // era interval (watchdog/refresh/backup/snapshot/vault/backfill/topup) agora:
+  //   · produção: cron EXTERNO chama /api/admin/refresh?token=… (home + FTS) e
+  //     /api/cron/refresh (catálogo) — o processo só serve;
+  //   · local: exporte ENABLE_JOBS=1 para reativar o ciclo antigo (dev/keepalive).
+  const enabled = process.env.ENABLE_JOBS === "1" || process.env.ENABLE_JOBS === "true";
+  if (!enabled) {
+    console.log("[jobs] ENABLE_JOBS não definido — TODOS os jobs de fundo desligados (cron externo assume; local: exporte ENABLE_JOBS=1)");
+    return;
+  }
+
   // v3.8 — SERVERLESS (Vercel): nada de processos de fundo. setInterval/setTimeout
   // morrem junto com a instância e os filhos node (backup/vault/snapshot) nem
   // existem num filesystem read-only. O ciclo de vida lá é:

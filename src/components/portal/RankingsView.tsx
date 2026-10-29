@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Trophy, Flame, Star, Heart, Layers, Crown } from "lucide-react";
 import { TYPE_LABEL, fmtNum, type WorkData } from "@/lib/types";
 import { usePortal } from "./store";
+import { fetchJSON } from "@/lib/fetchClient";
 import { usePersonal } from "./personal";
 import { TypeBadge } from "./WorkCard";
 
@@ -98,9 +99,8 @@ export function RankingsView() {
 
   useEffect(() => {
     let alive = true;
-    fetch(`/api/rankings?type=${type}&metric=${metric}&adult=${usePersonal.getState().settings.adult ? "show" : "hide"}`)
-      .then((r) => r.json())
-      .then((d) => { if (alive && d.ok) setData({ key, items: d.items }); })
+    fetchJSON<{ ok: boolean; items: any[] }>(`/api/rankings?type=${type}&metric=${metric}&adult=${usePersonal.getState().settings.adult ? "show" : "hide"}`)
+      .then((d) => { if (alive && d?.ok) setData({ key, items: d.items }); })
       .catch(() => {});
     return () => { alive = false; };
   }, [type, metric, key]);

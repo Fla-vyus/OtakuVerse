@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Newspaper, Loader2, Flame, Rocket, Star, Tv, CalendarClock, RefreshCcw, PenLine } from "lucide-react";
 import { usePortal } from "./store";
+import { fetchJSON } from "@/lib/fetchClient";
 
 interface NewsItem {
   id: string; kind: string; title: string; summary: string; body?: string;
@@ -73,15 +74,12 @@ function Materias() {
   const openWork = usePortal((s) => s.openWork);
 
   async function load() {
-    try {
-      const ctrl = new AbortController();
-      const t = setTimeout(() => ctrl.abort(), 15000);
-      const r = await fetch("/api/news", { signal: ctrl.signal });
-      clearTimeout(t);
-      const d = await r.json();
-      setItems(d.ok ? d.items : []);
-      if (!d.ok) setFailed(true);
-    } catch {
+    // v4.0: fetchJSON (3 tentativas + backoff + última resposta boa do sessionStorage)
+    const d = await fetchJSON<{ ok: boolean; items: NewsItem[] }>("/api/news");
+    if (d?.ok) {
+      setItems(d.items);
+      setFailed(false);
+    } else {
       setFailed(true);
       setItems([]);
     }

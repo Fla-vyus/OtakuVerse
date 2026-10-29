@@ -1,5 +1,6 @@
 "use client";
 
+import { fetchJSON } from "@/lib/fetchClient";
 import { useEffect, useState } from "react";
 import { CalendarDays, Clock3, Loader2, Tv } from "lucide-react";
 import { TYPE_LABEL, fmtNum, type WorkData } from "@/lib/types";
@@ -22,10 +23,10 @@ export function ReleasesView() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch("/api/releases")
-      .then((r) => r.json())
+    // v4.0: fetchJSON (3 tentativas + backoff + última resposta boa)
+    fetchJSON<{ ok: boolean; days: { weekday: number; label: string; items: ReleaseItem[] }[] }>("/api/releases")
       .then((d) => {
-        if (d.ok) {
+        if (d?.ok) {
           setDays(d.days);
           const today = new Date().getDay();
           setSelected(today);

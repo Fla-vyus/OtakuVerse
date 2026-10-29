@@ -136,9 +136,16 @@ export function prefetchWork(id: string): Promise<{ ok: boolean; status: number;
           if (oldest !== undefined) prefCache.delete(oldest);
         }
         prefCache.set(id, res);
+        // v4.0 (ETAPA 6): guarda a última resposta boa — rede caiu, o detalhe abre igual
+        try { sessionStorage.setItem(`ov:lastgood:/api/works/${id}`, JSON.stringify(data)); } catch {}
       }
       return res;
     } catch {
+      // v4.0: última resposta boa desta obra (mesmo velha) > erro seco
+      try {
+        const raw = sessionStorage.getItem(`ov:lastgood:/api/works/${id}`);
+        if (raw) return { ok: true, status: 200, data: JSON.parse(raw) };
+      } catch {}
       return { ok: false, status: 0, data: {} as any };
     } finally {
       prefInFlight.delete(id);

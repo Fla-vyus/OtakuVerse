@@ -68,8 +68,9 @@ while true; do
         pkill -f "standalone/server.js" 2>/dev/null
         sleep 3
         if [ -f /home/z/my-project/.next/standalone/server.js ]; then
-          # v3.7.2: OTAKUVERSE_ROOT — raiz real para os jobs de fundo (idem deploy.sh)
-          DATABASE_URL="file:/home/z/my-project/db/custom.db" OTAKUVERSE_ROOT=/home/z/my-project PORT=3000 NODE_ENV=production \
+          # v3.9: sem DATABASE_URL exportada — otakuverse.runtime.json decide o modo
+          # (Turso em produção; env externa sempre vence se definida)
+          env -u DATABASE_URL OTAKUVERSE_ROOT=/home/z/my-project PORT=3000 NODE_ENV=production \
             setsid node /home/z/my-project/.next/standalone/server.js >> /home/z/my-project/server.log 2>&1 &
           log "servidor de PRODUÇÃO reiniciado (degradado)"
         else
@@ -99,8 +100,8 @@ while true; do
   pkill -f "next dev" 2>/dev/null
   sleep 3
   if [ -f /home/z/my-project/.next/standalone/server.js ]; then
-    # v3.7.2: OTAKUVERSE_ROOT — raiz real para os jobs de fundo (idem deploy.sh)
-    DATABASE_URL="file:/home/z/my-project/db/custom.db" OTAKUVERSE_ROOT=/home/z/my-project PORT=3000 NODE_ENV=production \
+    # v3.9: sem DATABASE_URL exportada — otakuverse.runtime.json decide o modo
+    env -u DATABASE_URL OTAKUVERSE_ROOT=/home/z/my-project PORT=3000 NODE_ENV=production \
       setsid node /home/z/my-project/.next/standalone/server.js >> /home/z/my-project/server.log 2>&1 &
     log "servidor de PRODUÇÃO reiniciado"
   else

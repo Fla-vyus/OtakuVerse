@@ -3,6 +3,7 @@
 // então o bundler elimina este módulo do bundle Edge (nunca é parseado lá).
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
+import { isRemoteDb } from "@/lib/runtime-env";
 //
 // Durabilidade em camadas (nada se perde):
 //   1. backup SQLite diário (VACUUM INTO, rotação de 10, fora do git) + integrity_check
@@ -264,6 +265,29 @@ export function startBackgroundJobs() {
   if (process.env.VERCEL === "1") return;
   if (g.__ovJobsStarted) return;
   g.__ovJobsStarted = true;
+
+  // v3.9 — MODO TURSO (banco remoto): jobs que pressupõem SQLite em disco,
+  // scripts/.ts no container ou repositório git são DESLIGADOS — no deploy
+  // publicado não existe db/, scripts/ nem .git, e backup/snapshot passam a
+  // ser responsabilidade do Turso Cloud. Seguem ativos:
+  //   · watchdog (saúde do banco via adapter + cura do pool)
+  //   · refresh do catálogo (escreve no Turso — catálogo continua vivo)
+  if (isRemoteDb) {
+    console.log("[jobs] modo libsql: jobs de disco (restore/backup/snapshot/vault/backfill/topup) desligados — Turso Cloud + cron assumem");
+    setTimeout(watchdog, 60_000);
+    setInterval(watchdog, 5 * 60_000);
+    setTimeout(() => {
+      import("@/app/api/cron/refresh/route")
+        .then((m) => m.doRefresh())
+        .catch(() => {});
+    }, 90_000);
+    setInterval(() => {
+      import("@/app/api/cron/refresh/route")
+        .then((m) => m.doRefresh())
+        .catch(() => {});
+    }, 30 * 60_000);
+    return;
+  }
 
   // 0) restore automático se o banco foi perdido (roda antes do primeiro cron)
   setTimeout(autoRestore, 10_000);

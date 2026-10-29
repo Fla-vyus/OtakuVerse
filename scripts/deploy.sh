@@ -66,7 +66,7 @@ sleep 3
 #    v3.7.2: OTAKUVERSE_ROOT — raiz REAL do projeto para os jobs de fundo (src/lib/jobs.ts
 #    resolve scripts/backups/git a partir dela; o cwd do standalone engana a detecção).
 log "iniciando produção…"
-node -e "require('child_process').spawn('bash',['-c','set -a; source /home/z/my-project/.env; set +a; export OTAKUVERSE_ROOT=/home/z/my-project; PORT=3000 NODE_ENV=production node /home/z/my-project/.next/standalone/server.js >> /home/z/my-project/server.log 2>&1'],{detached:true,stdio:'ignore'}).unref()"
+node -e "require('child_process').spawn('bash',['-c','set -a; source /home/z/my-project/.env; set +a; export OTAKUVERSE_ROOT=/home/z/my-project; unset DATABASE_URL; PORT=3000 NODE_ENV=production node /home/z/my-project/.next/standalone/server.js >> /home/z/my-project/server.log 2>&1'],{detached:true,stdio:'ignore'}).unref()"
 
 # 5) Health check (até 60s)
 OK=0

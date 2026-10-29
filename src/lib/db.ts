@@ -1,3 +1,6 @@
+// v3.9 — runtime-env DEVE ser o primeiro import: injeta DATABASE_URL/TURSO_AUTH_TOKEN
+// (e demais chaves) de otakuverse.runtime.json ANTES de isLibsqlMode ser avaliado.
+import "./runtime-env";
 import { PrismaClient } from '@prisma/client'
 import { PrismaLibSQL } from '@prisma/adapter-libsql'
 import { createClient as createLibsqlClient } from '@libsql/client'

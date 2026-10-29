@@ -1,3 +1,7 @@
+// v3.9 — runtime-env primeiro: garante DATABASE_URL/AI_* do otakuverse.runtime.json
+// antes de qualquer job/rota ler env (a plataforma não injeta variáveis).
+import "./lib/runtime-env";
+
 // Auto-update em background: refresh do catálogo a cada 30 min + backup diário do DB.
 // A lógica Node vive em src/lib/jobs.ts — o guard com NEXT_RUNTIME estático permite
 // ao bundler eliminar o import do bundle Edge (instrumentation também é compilado para edge).

@@ -6,7 +6,19 @@ import { rateLimit } from "@/lib/auth";
 import type { WorkData } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 120;
+export const maxDuration = 30;
+
+// v4.0 — ETAPA 7: Aoi NÃO pode segurar memória nem travar o servidor.
+//   · 1 requisição POR VEZ por visitante (2ª enquanto a 1ª roda → 429 amigável)
+//   · timeout de 20s na chamada da IA
+//   · resposta enxuta (max_tokens)
+const AOI_TIMEOUT_MS = 20_000;
+const AOI_MAX_TOKENS = 700;
+const g = globalThis as unknown as { __aoiInFlight?: Map<string, number> };
+function aoiSlots() {
+  if (!g.__aoiInFlight) g.__aoiInFlight = new Map();
+  return g.__aoiInFlight;
+}
 
 // ---------- Heurística de seleção de candidatos ----------
 const SYNONYMS: { keys: string[]; genres: string[]; tags: string[] }[] = [
@@ -114,11 +126,35 @@ REGRAS DE FORMATAÇÃO (críticas):
 
 export async function POST(req: NextRequest) {
   try {
-    // rate limit: a Aoi é a rota mais cara (IA + pool) — abuso aqui derruba a experience de todos
+    // rate limit: a Aoi é a rota mais cara (IA + candidatos SQL) — abuso aqui derruba a experiência de todos
     const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || req.headers.get("x-real-ip") || "local";
     if (!rateLimit(req, `aichat:${ip}`, 15, 60_000)) {
       return NextResponse.json({ ok: false, error: "Calma, senpai~ muita mensagem seguida. Tenta de novo em um minutinho." }, { status: 429 });
     }
+    // v4.0: 1 requisição por vez por visitante
+    const slots = aoiSlots();
+    if ((slots.get(ip) ?? 0) > 0) {
+      return NextResponse.json({ ok: false, error: "Ara~ ainda estou respondendo sua mensagem anterior! Um momentinho. 💙" }, { status: 429 });
+    }
+    slots.set(ip, (slots.get(ip) ?? 0) + 1);
+    try {
+      return await aoiReply(req, ip);
+    } finally {
+      const n = (slots.get(ip) ?? 1) - 1;
+      if (n <= 0) slots.delete(ip);
+      else slots.set(ip, n);
+      // poda do mapa (nunca cresce sem limite)
+      if (slots.size > 4096) {
+        for (const [k, v] of slots) if (v <= 0) slots.delete(k);
+      }
+    }
+  } catch (e: any) {
+    return NextResponse.json({ ok: false, error: e.message }, { status: 500 });
+  }
+}
+
+async function aoiReply(req: NextRequest, ip: string): Promise<NextResponse> {
+  try {
     const body = await req.json().catch(() => ({}));
     const messages: { role: "user" | "assistant"; content: string }[] = Array.isArray(body.messages)
       ? body.messages.slice(-10)
@@ -128,8 +164,7 @@ export async function POST(req: NextRequest) {
 
     const all = await aiCandidates(false); // IA do catálogo principal — nunca mistura adulto
     const candidates = scoreCandidates(last, all);
-    // enriquece os 42 candidatos com a sinopse real (1 query indexada — o pool
-    // magro do cache não carrega synopsis; a Aoi continua recomendando com contexto)
+    // enriquece os 42 candidatos com a sinopse real (1 query indexada — a Aoi continua recomendando com contexto)
     const synoRows = await db.work.findMany({
       where: { id: { in: candidates.map((c) => c.id) } },
       select: { id: true, synopsis: true },
@@ -142,22 +177,33 @@ export async function POST(req: NextRequest) {
     const sessUser = await getSessionUser();
 
     const zai = await createAoi();
-    const completion = await zai.chat.completions.create({
-      messages: [
-        { role: "assistant", content: systemPrompt(sessUser?.displayName ?? undefined, !!sessUser?.adultMode) },
-        {
-          role: "assistant",
-          content: `CATÁLOGO DISPONÍVEL (${candidates.length} obras mais relevantes para a pergunta):\n\n${catalog}`,
-        },
-        ...messages.map((m) => ({ role: m.role as any, content: m.content })),
-      ],
-      thinking: { type: "disabled" },
-    });
+    const completion = await Promise.race([
+      zai.chat.completions.create({
+        messages: [
+          { role: "assistant", content: systemPrompt(sessUser?.displayName ?? undefined, !!sessUser?.adultMode) },
+          {
+            role: "assistant",
+            content: `CATÁLOGO DISPONÍVEL (${candidates.length} obras mais relevantes para a pergunta):\n\n${catalog}`,
+          },
+          ...messages.map((m) => ({ role: m.role as any, content: m.content })),
+        ],
+        thinking: { type: "disabled" },
+        max_tokens: AOI_MAX_TOKENS,
+      }),
+      new Promise<never>((_, rej) =>
+        setTimeout(() => rej(new Error("Aoi demorou demais para responder (timeout 20s)")), AOI_TIMEOUT_MS)
+      ),
+    ]);
 
     const reply = completion.choices[0]?.message?.content ?? "";
     if (!reply.trim()) throw new Error("Resposta vazia da IA");
     return NextResponse.json({ ok: true, reply });
   } catch (e: any) {
-    return NextResponse.json({ ok: false, error: e.message }, { status: 500 });
+    // erro amigável — a Aoi nunca devolve stack/erro cru para o visitante
+    const msg = String(e?.message ?? e);
+    const friendly = /timeout|demorou/i.test(msg)
+      ? "A Aoi está sobrecarregada agora~ tenta de novo em um instante, senpai? 💙"
+      : "A Aoi tropeçou no meio do pensamento… tenta mandar de novo? 💙";
+    return NextResponse.json({ ok: false, error: friendly }, { status: 504 });
   }
 }

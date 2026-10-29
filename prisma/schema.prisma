@@ -63,6 +63,17 @@ model Work {
   @@index([classification])
   @@index([startDate])
   @@index([status])
+  // v4.0 ETAPA 1 — índices das listas SQL (criados idempotentemente por
+  // scripts/db-indexes.ts; mantidos aqui para consistência com futuros db push)
+  @@index([popularity])
+  @@index([avgScore])
+  @@index([favourites])
+  @@index([chapters])
+  @@index([title])
+  @@index([classification, popularity])
+  @@index([classification, favourites])
+  @@index([status, popularity])
+  @@index([lastUpdate])
 }
 
 model User {

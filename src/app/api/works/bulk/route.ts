@@ -1,6 +1,8 @@
-// Detalhes em lote (biblioteca) — evita N requests
+// Detalhes em lote (biblioteca) — evita N requests.
+// v4.0: consulta SQL direta por ids (sem pool em memória). ≤200 ids por chamada.
 import { NextRequest, NextResponse } from "next/server";
-import { getAllWorks } from "@/lib/works";
+import { db } from "@/lib/db";
+import { parseWork } from "@/lib/types";
 import { getSessionUser } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
@@ -16,26 +18,13 @@ export async function GET(req: NextRequest) {
 
     const user = await getSessionUser();
     const adult = !!user?.adultMode;
-    const all = await getAllWorks(adult);
-    const byId = new Map(all.map((w) => [w.id, w]));
-    // ids podem estar na zona adulta: tenta no pool adulto se logado
-    const items = ids
-      .map((id) => byId.get(id))
-      .filter((w): w is NonNullable<typeof w> => !!w)
+    // SQL por ids (chave primária — barato). Dramas fora do catálogo; adulto só com modo +18.
+    const rows = await db.work.findMany({
+      where: { id: { in: ids }, type: { not: "drama" } },
+    });
+    const items = rows
+      .map((r) => parseWork(r))
       .filter((w) => w.classification !== "adult" || adult);
-
-    if (items.length < ids.length && adult) {
-      const missing = ids.filter((id) => !byId.get(id));
-      if (missing.length) {
-        const { db } = await import("@/lib/db");
-        const rows = await db.work.findMany({ where: { id: { in: missing } } });
-        const { parseWork } = await import("@/lib/types");
-        for (const r of rows) {
-          const w = parseWork(r);
-          if (w.classification === "adult") items.push(w);
-        }
-      }
-    }
     return NextResponse.json({ ok: true, items });
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: e.message }, { status: 500 });

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getRanking, type RankMetric, type AdultMode } from "@/lib/works";
+import { getRankingSql } from "@/lib/works-sql";
+import type { RankMetric, AdultMode } from "@/lib/works";
 import { getSessionUser } from "@/lib/auth";
 import { gzipJson } from "@/lib/httpCache";
 
@@ -18,7 +19,7 @@ export async function GET(req: NextRequest) {
     const adultParam = sp.get("adult");
     const adult: AdultMode = allowed && (adultParam === "show" || adultParam === "only") ? adultParam : "hide";
     const take = Math.min(96, Math.max(10, Number(sp.get("take") ?? 24)));
-    const items = await getRanking(type, metric, adult, take);
+    const items = await getRankingSql(type, metric, adult, take);
     // gzipJson: ranking com até 96 obras viajava cru (42KB) — gzip corta ~80%.
     // Sem cache público: rota sensível a sessão (gating +18).
     return gzipJson({ ok: true, items });

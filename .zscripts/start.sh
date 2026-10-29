@@ -75,6 +75,15 @@ if [ -f "./next-service-dist/server.js" ]; then
     export NODE_ENV=production
     export PORT="${PORT:-3000}"
     export HOSTNAME="${HOSTNAME:-0.0.0.0}"
+
+    # v3.9.7 (OtakuVerse): se o runtime json embarcou no standalone, NÃO injetar
+    # DATABASE_URL=file: — o app resolve a conexão real (Turso) pelo próprio json
+    # durante o boot (runtime-env). Injetar o default aqui pisoteava o json
+    # (runtime-env nunca sobrescreve env definida) e derrubava o site para modo
+    # arquivo com catálogo mínimo importado.
+    if [ -f "./otakuverse.runtime.json" ]; then
+        echo "🗄️  runtime json detectado no standalone — banco resolvido pelo app (Turso)"
+    else
     export DATABASE_URL="${DATABASE_URL:-$DEFAULT_PACKAGED_DATABASE_URL}"
 
     if [ "$DATABASE_URL" = "$DEFAULT_PACKAGED_DATABASE_URL" ]; then
@@ -87,6 +96,7 @@ if [ -f "./next-service-dist/server.js" ]; then
         echo "🗄️  当前使用打包数据库: $DEFAULT_PACKAGED_DB_PATH"
     else
         echo "🗄️  当前使用外部指定数据库: $DATABASE_URL"
+    fi
     fi
     
     # 后台启动 Next.js

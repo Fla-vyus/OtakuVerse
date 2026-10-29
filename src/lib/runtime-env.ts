@@ -41,7 +41,20 @@ function loadRuntimeEnv(): void {
       let applied = 0;
       for (const [k, v] of Object.entries(cfg)) {
         if (typeof v !== "string" || v.length === 0) continue;
-        if (process.env[k] === undefined || process.env[k] === "") {
+        const cur = process.env[k];
+        // v3.9.7: o start.sh da PLATAFORMA injeta DATABASE_URL=file:/app/db/custom.db
+        // como "banco empacotado" antes do server.js — e a regra antiga (env > json)
+        // fazia o json ser IGNORADO: site subia em modo arquivo com catálogo-gota
+        // (1.462 obras em vez de 40.456) mesmo com o json correto dentro do standalone.
+        // Esse default específico da plataforma é sobrescrito pelo json; envs reais
+        // (Vercel/shell/CI) continuam intocadas — a prioridade só cede ao fallback
+        // sintético do empacotador, nunca a uma configuração deliberada.
+        const PLATFORM_PACKAGED_DB = "file:/app/db/custom.db";
+        if (
+          cur === undefined ||
+          cur === "" ||
+          (k === "DATABASE_URL" && cur === PLATFORM_PACKAGED_DB)
+        ) {
           process.env[k] = v;
           applied++;
         }

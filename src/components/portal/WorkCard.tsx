@@ -3,7 +3,7 @@
 import React, { memo, useState } from "react";
 import { Star, BookOpen, Tv, Heart, Clapperboard, Bookmark, Check } from "lucide-react";
 import { usePortal, prefetchWork } from "./store";
-import { proxyImg } from "@/lib/imgurl";
+import { directCover, proxyImg } from "@/lib/imgurl";
 import { TYPE_LABEL, CLASSIFICATION_LABEL, type WorkData } from "@/lib/types";
 
 function fmt(n?: number | null): string {
@@ -19,13 +19,16 @@ function TypeIcon({ type }: { type: string }) {
   return <BookOpen className="h-3 w-3" />;
 }
 
-/** Card de obra — capas reais via proxy multi-fonte; se ambas falharem, card de texto estilizado (nunca imagem fake)
- *  No hover da capa aparecem as ações rápidas: curtir ❤️ e salvar 🔖 */
+/** Card de obra — v4.0: capa DIRETA do CDN (medium nas listas); se falhar, direta
+ *  alternativa; se bloquear hotlink, proxy /api/img; se tudo falhar, card de texto
+ *  estilizado (nunca imagem fake). No hover da capa aparecem as ações rápidas: curtir ❤️ e salvar 🔖 */
 export const WorkCard = memo(function WorkCard({ work, rank, badge, caption }: { work: WorkData; rank?: number; badge?: string; caption?: string }) {
+  // v4.0 — direto primeiro (CDN da fonte + cache do navegador); proxy é só fallback
+  const primary = directCover(work, "medium");
+  const alt = work.coverAlt ?? work.cover ?? null;
   const proxy = proxyImg(work.cover, work.coverAlt);
-  const direct = work.coverAlt ?? work.cover ?? null;
-  // 0=proxy, 1=direta, 2=texto — pula direto para texto se não há URL utilizável
-  const [imgStage, setImgStage] = useState(proxy ? 0 : direct ? 1 : 2);
+  // 0=direta-medium, 1=direta-full/alt, 2=proxy, 3=texto
+  const [imgStage, setImgStage] = useState(primary ? 0 : alt ? 1 : proxy ? 2 : 3);
 
   const tagChips = work.tags.slice(0, 2).map((t) => t.name);
   const isAdult = work.classification === "adult";
@@ -71,30 +74,41 @@ export const WorkCard = memo(function WorkCard({ work, rank, badge, caption }: {
       aria-label={`${work.title} — ${TYPE_LABEL[work.type]}`}
     >
       <div className="relative aspect-[2/3] w-full overflow-hidden" style={{ background: work.coverColor ? `${work.coverColor}22` : "var(--muted)" }}>
-        {/* imagem real: proxy → direta no-referrer → card texto */}
-        {imgStage === 0 && proxy && (
+        {/* v4.0: direta medium → direta alt/full → proxy → card texto */}
+        {imgStage === 0 && primary && (
+          <img
+            src={primary}
+            alt={`Capa de ${work.title}`}
+            loading="lazy"
+            decoding="async"
+            referrerPolicy="no-referrer"
+            onError={() => setImgStage(alt && alt !== primary ? 1 : proxy ? 2 : 3)}
+            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.06]"
+          />
+        )}
+        {imgStage === 1 && alt && (
+          <img
+            src={alt}
+            alt={`Capa de ${work.title}`}
+            loading="lazy"
+            decoding="async"
+            referrerPolicy="no-referrer"
+            onError={() => setImgStage(proxy ? 2 : 3)}
+            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.06]"
+          />
+        )}
+        {imgStage === 2 && proxy && (
           <img
             src={proxy}
             alt={`Capa de ${work.title}`}
             loading="lazy"
             decoding="async"
             referrerPolicy="no-referrer"
-            onError={() => setImgStage(direct ? 1 : 2)}
+            onError={() => setImgStage(3)}
             className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.06]"
           />
         )}
-        {imgStage === 1 && direct && (
-          <img
-            src={direct}
-            alt={`Capa de ${work.title}`}
-            loading="lazy"
-            decoding="async"
-            referrerPolicy="no-referrer"
-            onError={() => setImgStage(2)}
-            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.06]"
-          />
-        )}
-        {imgStage === 2 && (
+        {imgStage === 3 && (
           <div
             className="flex h-full w-full flex-col items-center justify-center gap-2 p-3 text-center"
             style={{
@@ -227,12 +241,13 @@ export function ScoreBadge({ score }: { score?: number | null }) {
   );
 }
 
-/** Capa miniatura com fallback proxy → direta → bloco de cor (nunca imagem fake) */
+/** Capa miniatura com fallback direto → proxy → bloco de cor (nunca imagem fake) */
 export function CoverThumb({ work, className }: { work: WorkData; className?: string }) {
+  const primary = directCover(work, "medium");
+  const alt = work.coverAlt ?? work.cover ?? null;
   const proxy = proxyImg(work.cover, work.coverAlt);
-  const direct = work.coverAlt ?? work.cover ?? null;
-  const [stage, setStage] = useState(proxy ? 0 : direct ? 1 : 2);
-  if (stage === 2 || (!proxy && !direct)) {
+  const [stage, setStage] = useState(primary ? 0 : alt ? 1 : proxy ? 2 : 3);
+  if (stage === 3 || (!primary && !alt && !proxy)) {
     return (
       <div
         className={`flex items-center justify-center text-[10px] font-black text-white ${className ?? ""}`}
@@ -243,7 +258,7 @@ export function CoverThumb({ work, className }: { work: WorkData; className?: st
       </div>
     );
   }
-  const src = stage === 0 ? proxy : direct;
+  const src = stage === 0 ? primary : stage === 1 ? alt : proxy;
   return (
     <img
       src={src ?? undefined}
@@ -251,7 +266,7 @@ export function CoverThumb({ work, className }: { work: WorkData; className?: st
       loading="lazy"
       decoding="async"
       referrerPolicy="no-referrer"
-      onError={() => setStage(stage === 0 ? (direct ? 1 : 2) : 2)}
+      onError={() => setStage(stage === 0 ? (alt && alt !== primary ? 1 : proxy ? 2 : 3) : stage === 1 ? (proxy ? 2 : 3) : 3)}
       className={className}
     />
   );

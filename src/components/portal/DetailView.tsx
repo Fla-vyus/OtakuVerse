@@ -287,6 +287,7 @@ export function DetailView({ workId }: { workId: string }) {
   const names = altNames(w);
   const authors = mainAuthors(w);
   const mag = w.magazine ?? null;
+  // v4.0: direto primeiro; proxy /api/img é só o fallback anti-hotlink
   const proxy = proxyImg(w.cover, w.coverAlt);
 
   return (
@@ -298,12 +299,14 @@ export function DetailView({ workId }: { workId: string }) {
       {/* HERO */}
       <section className="relative overflow-hidden rounded-3xl border border-border">
         <div className="absolute inset-0">
-          {imgStage < 2 && (w.banner || w.cover || w.coverAlt) ? (
+          {imgStage < 3 && (w.banner || w.cover || w.coverAlt) ? (
             <img
               src={
-                imgStage === 0 && (w.banner || w.cover)
-                  ? `/api/img?u=${encodeURIComponent(w.banner ?? w.cover)}`
-                  : (w.coverAlt || w.cover || w.banner || "")
+                imgStage === 0
+                  ? (w.banner ?? w.cover ?? w.coverAlt ?? "")
+                  : imgStage === 1
+                    ? (w.coverAlt ?? w.cover ?? w.banner ?? "")
+                    : (proxy ?? "")
               }
               alt=""
               referrerPolicy="no-referrer"
@@ -321,22 +324,20 @@ export function DetailView({ workId }: { workId: string }) {
           {/* capa */}
           <div className="w-36 shrink-0 self-start sm:w-48">
             <div className="ov-shadow overflow-hidden rounded-2xl border border-border" style={{ background: w.coverColor ? `${w.coverColor}22` : "var(--muted)" }}>
-              {imgStage === 0 && (w.cover || w.coverAlt) ? (
+              {imgStage < 3 && (w.cover || w.coverAlt) ? (
                 <img
-                  src={proxy ?? ""}
+                  src={
+                    imgStage === 0
+                      ? (w.cover ?? w.coverAlt ?? "")
+                      : imgStage === 1
+                        ? (w.coverAlt ?? w.cover ?? "")
+                        : (proxy ?? "")
+                  }
                   alt={`Capa de ${w.title}`}
                   referrerPolicy="no-referrer"
                   decoding="async"
                   fetchPriority="high"
                   onError={() => setImgStage((s) => s + 1)}
-                  className="aspect-[2/3] w-full object-cover"
-                />
-              ) : imgStage === 1 && (w.coverAlt || w.cover) ? (
-                <img
-                  src={w.coverAlt || w.cover}
-                  alt={`Capa de ${w.title}`}
-                  referrerPolicy="no-referrer"
-                  onError={() => setImgStage(2)}
                   className="aspect-[2/3] w-full object-cover"
                 />
               ) : (

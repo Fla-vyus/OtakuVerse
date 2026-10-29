@@ -70,7 +70,8 @@ while true; do
         if [ -f /home/z/my-project/.next/standalone/server.js ]; then
           # v3.9: sem DATABASE_URL exportada — otakuverse.runtime.json decide o modo
           # (Turso em produção; env externa sempre vence se definida)
-          env -u DATABASE_URL OTAKUVERSE_ROOT=/home/z/my-project PORT=3000 NODE_ENV=production \
+          # v4.0: ENABLE_JOBS=1 SÓ local — no publicado o processo só serve requisições
+          env -u DATABASE_URL ENABLE_JOBS=1 OTAKUVERSE_ROOT=/home/z/my-project PORT=3000 NODE_ENV=production \
             setsid node /home/z/my-project/.next/standalone/server.js >> /home/z/my-project/server.log 2>&1 &
           log "servidor de PRODUÇÃO reiniciado (degradado)"
         else
@@ -101,7 +102,8 @@ while true; do
   sleep 3
   if [ -f /home/z/my-project/.next/standalone/server.js ]; then
     # v3.9: sem DATABASE_URL exportada — otakuverse.runtime.json decide o modo
-    env -u DATABASE_URL OTAKUVERSE_ROOT=/home/z/my-project PORT=3000 NODE_ENV=production \
+    # v4.0: ENABLE_JOBS=1 SÓ local
+    env -u DATABASE_URL ENABLE_JOBS=1 OTAKUVERSE_ROOT=/home/z/my-project PORT=3000 NODE_ENV=production \
       setsid node /home/z/my-project/.next/standalone/server.js >> /home/z/my-project/server.log 2>&1 &
     log "servidor de PRODUÇÃO reiniciado"
   else

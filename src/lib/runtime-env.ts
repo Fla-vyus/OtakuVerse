@@ -44,8 +44,7 @@ function loadRuntimeEnv(): void {
         const cur = process.env[k];
         // v3.9.7: o start.sh da PLATAFORMA injeta DATABASE_URL=file:/app/db/custom.db
         // como "banco empacotado" antes do server.js — e a regra antiga (env > json)
-        // fazia o json ser IGNORADO: site subia em modo arquivo com catálogo-gota
-        // (1.462 obras em vez de 40.456) mesmo com o json correto dentro do standalone.
+        // fazia o json ser IGNORADO: site subia em modo arquivo com catálogo-gota.
         // Esse default específico da plataforma é sobrescrito pelo json; envs reais
         // (Vercel/shell/CI) continuam intocadas — a prioridade só cede ao fallback
         // sintético do empacotador, nunca a uma configuração deliberada.
@@ -59,6 +58,17 @@ function loadRuntimeEnv(): void {
           applied++;
         }
       }
+      // v4.0 ETAPA 5: convenção TURSO_DATABASE_URL (env de plataforma hospedeira) —
+      // se o host injetar credenciais Turso por env, elas já venceram o json acima
+      // quando presentes; aqui só garantimos o mapeamento alternativo de nome.
+      if (!process.env.DATABASE_URL && process.env.TURSO_DATABASE_URL) {
+        process.env.DATABASE_URL = process.env.TURSO_DATABASE_URL;
+        applied++;
+      }
+      if (!process.env.TURSO_AUTH_TOKEN && process.env.TURSO_TOKEN) {
+        process.env.TURSO_AUTH_TOKEN = process.env.TURSO_TOKEN;
+        applied++;
+      }
       // log discreto — útil no log da plataforma para confirmar o modo
       const mode = /^libsql:\/\//i.test(process.env.DATABASE_URL ?? "")
         ? "libsql (Turso)"
@@ -70,6 +80,11 @@ function loadRuntimeEnv(): void {
     } catch {
       // arquivo corrompido/ilegível → tenta o próximo candidato
     }
+  }
+  // v4.0 ETAPA 5: sem json no disco, credenciais Turso por env da plataforma ainda valem
+  if (!process.env.DATABASE_URL && process.env.TURSO_DATABASE_URL) {
+    process.env.DATABASE_URL = process.env.TURSO_DATABASE_URL;
+    console.log("[runtime-env] TURSO_DATABASE_URL (env da plataforma) → DATABASE_URL");
   }
 }
 

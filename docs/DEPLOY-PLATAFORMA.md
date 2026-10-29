@@ -14,6 +14,7 @@
 | Jobs de disco em container sem disco | restore/backup/snapshot presumem `db/`, `scripts/`, `.git` | modo libsql desliga jobs de disco (Turso Cloud + cron assumem) |
 | Datas epoch-ms no Turso | adapter Prisma rejeita int em DateTime ("Inconsistent column data") | `scripts/turso-fix-dates.mjs --fix` — 40.456 linhas normalizadas |
 | Pico de memória no boot | warmup auto-HTTP (~1.1GB em Bun) | (v3.7.6) warmup só em dev; hidratação do pool pico ~1GB por ~30s, assenta em ~550MB |
+| **Runtime é BUN, não node** | deploys v3.9 subiam com APIs 500 vazias: o Turbopack externaliza `@libsql/client` como symlink em `.next/node_modules/` apontando para a duplicata podada; bun segue o symlink à risca (ENOENT → crash do chunk do banco); node perdoa — por isso o teste local com node passava | (v3.9.2) slim troca stub órfão por cópia real do pacote do topo + porta de segurança que ABORTA o build se sobrar symlink quebrado. **Contrato de teste canônico agora é bun + `env -i` + cwd=standalone** |
 
 ## Estado validado (local, contrato idêntico ao da plataforma)
 

@@ -34,8 +34,31 @@ done
 # 3) binding musl
 rm -rf "$S"/node_modules/@libsql/linux-x64-musl
 
-# 4) duplicata do adapter
+# 4) duplicata do adapter (17MB) — ⚠️ MAS o tracing do turbopack cria stubs em
+#    .next/node_modules/ como SYMLINKS apontando para ela. Bun (runtime da
+#    plataforma) segue o symlink à risca: ENOENT → crash no carregamento do chunk
+#    do banco → HTTP 500 vazio em TODA API (node perdoa resolvendo pelo topo).
+#    Causa real do deploy v3.9 sem dados (diagnosticado 30/10 com bun repro local).
 rm -rf "$S"/node_modules/@prisma/adapter-libsql/node_modules
+
+# 4.5) conserta stubs órfãos: troca o symlink quebrado por uma CÓPIA REAL do pacote
+#      equivalente do topo (mesma API — @libsql/client 0.18 no lugar do 0.8.1).
+find "$S/.next/node_modules" -xtype l 2>/dev/null | while read -r link; do
+  tgt="$(readlink "$link")"
+  pkg="${tgt##*node_modules/}"
+  if [ -d "$S/node_modules/$pkg" ]; then
+    rm -rf "$link"
+    cp -r "$S/node_modules/$pkg" "$link"
+    echo "[slim] stub órfão $(basename "$link") → cópia real de $pkg (fix bun)"
+  else
+    echo "[slim] AVISO: stub quebrado SEM equivalente no topo: $link → $tgt"
+  fi
+done
+ORFAOS=$(find "$S/.next/node_modules" -xtype l 2>/dev/null | wc -l)
+if [ "$ORFAOS" -gt 0 ]; then
+  echo "[slim] ERRO: $ORFAOS stub(s) quebrado(s) restante(s) — abortando (bun morreria em produção)"
+  exit 1
+fi
 
 # 5) .env tracado — o Next standalone carrega .env do próprio diretório ANTES do
 #    runtime-env.ts, e um .env com DATABASE_URL=file: forçaria modo arquivo num

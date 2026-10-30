@@ -6,12 +6,16 @@
 // O que faz:
 //   1. Copia o DDL (CREATE TABLE/INDEX/TRIGGER) do SQLite local → Turso
 //   2. Copia TODAS as linhas de TODAS as tabelas em lotes transacionais
-//   3. Verifica contagens linha a linha no final
+//   3. Rebuild das auxiliares WorkGenre/WorkTag (json_each sobre Work) — mantém
+//      as tabelas normalizadas de gênero/tag sincronizadas com a importação
+//   4. Verifica contagens linha a linha no final
 //
 // Flags:
 //   --fresh   apaga os dados remotos antes de importar (reimport limpo)
 //
 // Requisitos: @libsql/client (já nas dependências). Nada de CLI do Turso.
+
+import { ensureAuxSchema, rebuildAuxTables } from "./lib-aux-tables.mjs";
 
 const TABLES_SKIP = ["_prisma_migrations"]; // tabelas internas que não viajam
 
@@ -43,12 +47,12 @@ const t0 = Date.now();
 let totalRows = 0;
 const errors = [];
 
-console.log(`[1/3] Conectando…`);
+console.log(`[1/4] Conectando…`);
 await remote.execute("SELECT 1");
 console.log(`  ✓ Turso OK (${REMOTE_URL})`);
 console.log(`  ✓ Local OK (${LOCAL_URL})`);
 
-console.log(`[2/3] Copiando DDL…`);
+console.log(`[2/4] Copiando DDL…`);
 const objs = await local.execute(
   `SELECT name, type, sql FROM sqlite_master
    WHERE sql IS NOT NULL
@@ -78,7 +82,7 @@ for (const obj of objs.rows) {
   }
 }
 
-console.log(`[3/3] Copiando dados…`);
+console.log(`[3/4] Copiando dados…`);
 const tables = objs.rows.filter((r) => r.type === "table");
 for (const t of tables) {
   const name = String(t.name);
@@ -168,6 +172,22 @@ for (const t of tables) {
   }
   if (copied > 0) console.log(`  ✓ ${name}: ${copied} linhas`);
   totalRows += copied;
+}
+
+console.log(`[4/4] Auxiliares WorkGenre/WorkTag (json_each sobre Work)…`);
+try {
+  await ensureAuxSchema(remote, (m) => console.log(m));
+  const aux = await rebuildAuxTables(remote, { windowSize: 4000, log: (m) => console.log(m) });
+  if (aux.errors.length) {
+    for (const e of aux.errors) errors.push(`Auxiliares ${e}`);
+    console.warn(`  ✗ ${aux.errors.length} janela(s) com erro`);
+  } else {
+    console.log(`  ✓ ${aux.windows} janelas processadas`);
+  }
+} catch (e) {
+  const msg = String(e?.message ?? e).slice(0, 160);
+  errors.push(`Auxiliares: ${msg}`);
+  console.warn(`  ✗ auxiliares: ${msg}`);
 }
 
 console.log(`\n[verificação] contagens locais vs Turso:`);

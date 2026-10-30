@@ -14,7 +14,8 @@
     "db:reset": "prisma migrate reset",
     "turso:import": "node scripts/turso-import.mjs",
     "prebuild": "prisma generate",
-    "postbuild": "bash scripts/slim-standalone.sh"
+    "postbuild": "bash scripts/slim-standalone.sh",
+    "turso:aux": "node scripts/turso-aux-tables.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

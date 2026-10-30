@@ -1,7 +1,10 @@
 // ETAPA 1 — índices + FTS5 no banco (Turso ou SQLite local). IDEMPOTENTE.
 // Uso: DATABASE_URL=... TURSO_AUTH_TOKEN=... node scripts/db-indexes.ts [--fts]
 // O rebuild do FTS (--fts) roda no admin/refresh e aqui de forma manual.
+// Os índices de Work e o DDL das auxiliares WorkGenre/WorkTag vêm de
+// scripts/lib-aux-tables.mjs (fonte única de verdade).
 import { createClient } from "@libsql/client";
+import { WORK_INDEXES, AUX_DDL } from "./lib-aux-tables.mjs";
 
 const url = process.env.DATABASE_URL ?? "";
 const token = process.env.TURSO_AUTH_TOKEN ?? "";
@@ -17,6 +20,11 @@ const INDEXES = [
   `CREATE INDEX IF NOT EXISTS idx_work_class_fav ON "Work"("classification","favourites")`,
   `CREATE INDEX IF NOT EXISTS idx_work_status_pop ON "Work"("status","popularity")`,
   `CREATE INDEX IF NOT EXISTS idx_work_lastupdate ON "Work"("lastUpdate")`,
+  // índices novos (startDate, nextEpisodeAt, type+trending, type+status+popularity,
+  // country, format) — fonte única em lib-aux-tables.mjs
+  ...WORK_INDEXES.map(([, sql]) => sql),
+  // tabelas auxiliares de gênero/tag (DDL idempotente; rebuild fica no CLI e no admin/refresh)
+  ...AUX_DDL,
   `CREATE TABLE IF NOT EXISTS home_cache (key TEXT PRIMARY KEY, json TEXT NOT NULL, at INTEGER NOT NULL)`,
   `CREATE TABLE IF NOT EXISTS tag_stats (name TEXT PRIMARY KEY, count INTEGER NOT NULL)`,
 ];

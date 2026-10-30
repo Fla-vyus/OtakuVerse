@@ -30,6 +30,7 @@ export const WORK_INDEXES = [
   ["Work_type_status_popularity_idx", `CREATE INDEX IF NOT EXISTS "Work_type_status_popularity_idx" ON "Work"("type","status","popularity")`],
   ["Work_country_idx", `CREATE INDEX IF NOT EXISTS "Work_country_idx" ON "Work"("country")`],
   ["Work_format_idx", `CREATE INDEX IF NOT EXISTS "Work_format_idx" ON "Work"("format")`],
+  ["Work_isAdult_type_popularity_idx", `CREATE INDEX IF NOT EXISTS "Work_isAdult_type_popularity_idx" ON "Work"("isAdult","type","popularity")`],
 ];
 
 // ── Tabelas auxiliares (DDL das tabelas; índices vêm separados para poder
